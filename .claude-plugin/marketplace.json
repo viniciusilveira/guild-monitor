@@ -1,0 +1,11 @@
+{
+  "name": "guild-monitor",
+  "owner": { "name": "guild-monitor" },
+  "plugins": [
+    {
+      "name": "guild-monitor",
+      "source": "./",
+      "description": "RPG guild that monitors your Claude Code session: pixel-art characters, usage meters and XP per operation"
+    }
+  ]
+}

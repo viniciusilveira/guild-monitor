@@ -1,0 +1,45 @@
+{
+  "name": "guild-monitor",
+  "version": "0.3.0",
+  "description": "Guilda de RPG que monitora a sessão: personagens animados em pixel art, atributos de uso e XP por tarefa",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "sleepAfterSeconds": {
+      "type": "number",
+      "title": "Dormir após (segundos)",
+      "description": "Tempo ocioso após o qual os personagens dormem",
+      "default": 90
+    },
+    "tiredAtPercent": {
+      "type": "number",
+      "title": "Cansar a partir de (% de contexto)",
+      "description": "Preenchimento do contexto a partir do qual os personagens ficam cansados",
+      "default": 75
+    },
+    "bandSize": {
+      "type": "string",
+      "title": "Tamanho da banda",
+      "description": "full: personagem ativo em tamanho cheio (16 linhas); compact: todos reduzidos (8 linhas)",
+      "default": "full",
+      "options": [
+        "full",
+        "compact"
+      ]
+    },
+    "demo": {
+      "type": "string",
+      "title": "Modo demo",
+      "description": "Mostra valores fictícios numa cena fixa (para prints e para conhecer o mod); off usa a sessão real",
+      "default": "off",
+      "options": [
+        "off",
+        "explorador",
+        "mago",
+        "guerreiro",
+        "bug",
+        "cansado",
+        "dormindo"
+      ]
+    }
+  }
+}
