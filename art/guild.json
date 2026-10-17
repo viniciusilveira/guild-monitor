@@ -1,0 +1,398 @@
+{
+  "version": 1,
+  "frame_width": 32,
+  "frame_height": 32,
+  "layout": "horizontal_strip",
+  "baseline_row": 29,
+  "palette": [
+    {
+      "index": 0,
+      "name": "transparent",
+      "hex": null
+    },
+    {
+      "index": 1,
+      "name": "body_orange",
+      "hex": "#D97757"
+    },
+    {
+      "index": 2,
+      "name": "dark_orange",
+      "hex": "#B85C3F"
+    },
+    {
+      "index": 3,
+      "name": "light_orange",
+      "hex": "#F0A27F"
+    },
+    {
+      "index": 4,
+      "name": "dark_eye",
+      "hex": "#1E1E1E"
+    },
+    {
+      "index": 5,
+      "name": "white",
+      "hex": "#FFFFFF"
+    },
+    {
+      "index": 6,
+      "name": "sweat_blue",
+      "hex": "#7CC4F0"
+    },
+    {
+      "index": 7,
+      "name": "deep_purple",
+      "hex": "#5B3A8C"
+    },
+    {
+      "index": 8,
+      "name": "light_purple",
+      "hex": "#8E6BBF"
+    },
+    {
+      "index": 9,
+      "name": "robe_blue_purple",
+      "hex": "#3F3A7A"
+    },
+    {
+      "index": 10,
+      "name": "yellow",
+      "hex": "#F2D45C"
+    },
+    {
+      "index": 11,
+      "name": "wood",
+      "hex": "#8A5A33"
+    },
+    {
+      "index": 12,
+      "name": "cyan_orb",
+      "hex": "#5CE1E6"
+    },
+    {
+      "index": 13,
+      "name": "steel",
+      "hex": "#9AA3AD"
+    },
+    {
+      "index": 14,
+      "name": "dark_steel",
+      "hex": "#6B747E"
+    },
+    {
+      "index": 15,
+      "name": "light_steel",
+      "hex": "#D6DCE2"
+    },
+    {
+      "index": 16,
+      "name": "red",
+      "hex": "#C8423A"
+    },
+    {
+      "index": 17,
+      "name": "tan_hat",
+      "hex": "#C9A66B"
+    },
+    {
+      "index": 18,
+      "name": "dark_tan",
+      "hex": "#8A6A3A"
+    },
+    {
+      "index": 19,
+      "name": "green_scarf",
+      "hex": "#4C9A5B"
+    },
+    {
+      "index": 20,
+      "name": "bug_green",
+      "hex": "#5FA36A"
+    },
+    {
+      "index": 21,
+      "name": "bug_dark_green",
+      "hex": "#3E7A4A"
+    }
+  ],
+  "sheets": [
+    {
+      "id": "mago_parado",
+      "class": "mago",
+      "animation": "parado",
+      "file": "mago_parado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        250,
+        250,
+        250,
+        250
+      ],
+      "tag": "parado",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "mago_cansado",
+      "class": "mago",
+      "animation": "cansado",
+      "file": "mago_cansado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        300,
+        300,
+        300,
+        300
+      ],
+      "tag": "cansado",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "mago_dormindo",
+      "class": "mago",
+      "animation": "dormindo",
+      "file": "mago_dormindo.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        400,
+        400,
+        400,
+        400
+      ],
+      "tag": "dormindo",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "mago_trabalho",
+      "class": "mago",
+      "animation": "trabalho",
+      "file": "mago_trabalho.png",
+      "frames": 6,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ],
+      "tag": "trabalho",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "guerreiro_parado",
+      "class": "guerreiro",
+      "animation": "parado",
+      "file": "guerreiro_parado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        250,
+        250,
+        250,
+        250
+      ],
+      "tag": "parado",
+      "view": "side_right",
+      "loop": true
+    },
+    {
+      "id": "guerreiro_cansado",
+      "class": "guerreiro",
+      "animation": "cansado",
+      "file": "guerreiro_cansado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        300,
+        300,
+        300,
+        300
+      ],
+      "tag": "cansado",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "guerreiro_dormindo",
+      "class": "guerreiro",
+      "animation": "dormindo",
+      "file": "guerreiro_dormindo.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        400,
+        400,
+        400,
+        400
+      ],
+      "tag": "dormindo",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "guerreiro_trabalho",
+      "class": "guerreiro",
+      "animation": "trabalho",
+      "file": "guerreiro_trabalho.png",
+      "frames": 6,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ],
+      "tag": "trabalho",
+      "view": "side_right",
+      "loop": true
+    },
+    {
+      "id": "bug_parado",
+      "class": "bug",
+      "animation": "parado",
+      "file": "bug_parado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        250,
+        250,
+        250,
+        250
+      ],
+      "tag": "parado",
+      "view": "side_left",
+      "loop": true
+    },
+    {
+      "id": "bug_derrotado",
+      "class": "bug",
+      "animation": "derrotado",
+      "file": "bug_derrotado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        120,
+        120,
+        120,
+        120
+      ],
+      "tag": "derrotado",
+      "view": "side_left",
+      "loop": false,
+      "note": "tocar uma vez e segurar o ultimo frame"
+    },
+    {
+      "id": "explorador_parado",
+      "class": "explorador",
+      "animation": "parado",
+      "file": "explorador_parado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        250,
+        250,
+        250,
+        250
+      ],
+      "tag": "parado",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "explorador_cansado",
+      "class": "explorador",
+      "animation": "cansado",
+      "file": "explorador_cansado.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        300,
+        300,
+        300,
+        300
+      ],
+      "tag": "cansado",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "explorador_dormindo",
+      "class": "explorador",
+      "animation": "dormindo",
+      "file": "explorador_dormindo.png",
+      "frames": 4,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        400,
+        400,
+        400,
+        400
+      ],
+      "tag": "dormindo",
+      "view": "front",
+      "loop": true
+    },
+    {
+      "id": "explorador_trabalho",
+      "class": "explorador",
+      "animation": "trabalho",
+      "file": "explorador_trabalho.png",
+      "frames": 6,
+      "frame_width": 32,
+      "frame_height": 32,
+      "durations_ms": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "tag": "trabalho",
+      "view": "side_right",
+      "loop": true
+    }
+  ],
+  "designs": [
+    {
+      "id": "mago_design",
+      "file": "mago_design.png"
+    },
+    {
+      "id": "guerreiro_design",
+      "file": "guerreiro_design.png"
+    },
+    {
+      "id": "explorador_design",
+      "file": "explorador_design.png"
+    },
+    {
+      "id": "bug_design",
+      "file": "bug_design.png"
+    }
+  ]
+}
