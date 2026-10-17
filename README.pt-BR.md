@@ -135,21 +135,23 @@ A banda se adapta ao terminal: primeiro o personagem ativo, depois os status ao 
 
 O `demo` mostra números inventados (HP 72%, MP 45% com 2h13 para reiniciar, ST 64%, $3,42, um Guerreiro nível 4) numa cena fixa e **ignora a sessão real e não salva nada**. Útil para prints e para um primeiro contato. Deixe em `off` no uso real.
 
+Não precisa reiniciar para trocar de cena: digite `/guild bug` (ou qualquer outra cena) e a banda muda na hora; `/guild off` volta à sessão real. O comando vale só para a sessão atual.
+
 ## Capturas de tela
 
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/explorador.png" alt="Explorador"><br>Explorador</td>
+    <td align="center"><img src="docs/screenshots/mago.png" alt="Mago"><br>Mago</td>
+    <td align="center"><img src="docs/screenshots/guerreiro.png" alt="Guerreiro"><br>Guerreiro</td>
+  </tr>
+</table>
+
 <!--
-Adicione capturas reais das cenas do demo em docs/screenshots/ e descomente:
-
-| Explorador | Mago | Guerreiro |
-|---|---|---|
-| ![explorador](docs/screenshots/explorador.png) | ![mago](docs/screenshots/mago.png) | ![guerreiro](docs/screenshots/guerreiro.png) |
-
-| Bug | Cansado | Dormindo |
-|---|---|---|
-| ![bug](docs/screenshots/bug.png) | ![cansado](docs/screenshots/cansado.png) | ![dormindo](docs/screenshots/dormindo.png) |
+Faltam as cenas bug, cansado e dormindo, para capturar com `/guild <cena>`.
+Salve como docs/screenshots/<cena>.png e inclua na tabela acima.
 -->
 
-As capturas do terminal de cada cena do demo estão a caminho. Enquanto isso, ponha o `demo` em qualquer cena para vê-la no seu terminal.
 
 ## Desenvolvimento
 

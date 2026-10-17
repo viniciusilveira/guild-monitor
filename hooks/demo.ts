@@ -13,6 +13,18 @@ export type Scene = (typeof SCENES)[number]
 
 export const sceneOf = (value: unknown): Scene | undefined => SCENES.find(scene => scene === value)
 
+export type SceneChoice = { kind: 'scene'; scene: Scene } | { kind: 'off' } | { kind: 'unknown' }
+
+// What `/guild <word>` asks for: a scene, `off` to go back to the real session, or nothing known.
+export const choiceOf = (args: string): SceneChoice => {
+  const word = args.trim().toLowerCase()
+  const scene = sceneOf(word)
+
+  if (scene !== undefined) return { kind: 'scene', scene }
+
+  return word === 'off' ? { kind: 'off' } : { kind: 'unknown' }
+}
+
 const MINUTE_MS = 60_000
 
 const demoGuild = () => {

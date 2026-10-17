@@ -53,7 +53,7 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
             {`ST ${bar(view.stamina)} ${percentText(view.stamina)}`}
           </Text>
           <Text color={view.costUsd === null ? METER_COLORS.unknown : METER_COLORS.gold}>{`ouro ${costText(view.costUsd)}`}</Text>
-          {view.bug !== 'none' && !layout.bug && !layout.bugBelow && <Text color="red">bug na area!</Text>}
+          {view.bug !== 'none' && !layout.bug && !layout.bugBelow && <Text color="red">bug na área!</Text>}
           {layout.bugBelow ? (
             <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
           ) : (

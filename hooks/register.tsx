@@ -4,7 +4,7 @@ import type { CoreEngineInterface, Register, StateDollar } from 'claude-code'
 import type { ViewModel } from '../types'
 import type { TaskClass, ToolUse } from './classify'
 import { linesWritten } from './classify'
-import { demoState, sceneOf } from './demo'
+import { choiceOf, demoState, SCENES, sceneOf } from './demo'
 import type { Settings } from './guild'
 import { DEFAULTS } from './guild'
 import type { Size } from './layout'
@@ -97,7 +97,7 @@ export const register: Register = (on, options) => {
   }
   const bandSize = options.bandSize === 'compact' ? 'compact' : 'full'
   // A demo scene shows made-up figures and ignores the session.
-  const scene = sceneOf(options.demo)
+  let scene = sceneOf(options.demo)
 
   let tracker: Tracker = createTracker(emptyGuild(), 0)
   let usage: Usage = { rateLimits: [] }
@@ -112,6 +112,11 @@ export const register: Register = (on, options) => {
     scene === undefined ? { tracker, usage } : demoState(scene, now, settings)
 
   on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'guild',
+      description: 'Mostra uma cena de demonstração da guilda (ou volta à sessão real)',
+      argumentHint: `[${SCENES.join('|')}|off]`,
+    })
     tracker = createTracker(parseGuild(await $.store.get(STORE_KEY)), await $.clock.now())
     usage = mergeUsage(usage, usageFrom(await $.session.usage()))
     isReady = true
@@ -157,6 +162,17 @@ export const register: Register = (on, options) => {
     })
 
     return next(e)
+  })
+
+  // `/guild bug` shows that scene at once; `/guild off` goes back to the real session.
+  on('command.run', { command: 'guild' }, (_$, e) => {
+    const choice = choiceOf(e.args)
+
+    if (choice.kind === 'unknown') return { text: `Use /guild ${SCENES.join(' | ')} | off` }
+
+    scene = choice.kind === 'scene' ? choice.scene : undefined
+
+    return { text: choice.kind === 'scene' ? `Cena: ${choice.scene}` : 'Sessão real' }
   })
 
   on('turn.start', async ($, e, next) => {

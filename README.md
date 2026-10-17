@@ -135,21 +135,23 @@ The band adapts to the terminal: first the active character, then the stats besi
 
 `demo` shows invented numbers (HP 72%, MP 45% with 2h13 to reset, ST 64%, $3.42, a level-4 Warrior) in a fixed scene and **ignores the real session and saves nothing**. Handy for screenshots and for a first look. Leave it at `off` for real use.
 
+You do not need to restart to change scenes: type `/guild bug` (or any other scene) and the band switches at once; `/guild off` goes back to the real session. The command changes the scene for the current session only.
+
 ## Screenshots
 
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/explorador.png" alt="Explorer"><br>Explorer</td>
+    <td align="center"><img src="docs/screenshots/mago.png" alt="Mage"><br>Mage</td>
+    <td align="center"><img src="docs/screenshots/guerreiro.png" alt="Warrior"><br>Warrior</td>
+  </tr>
+</table>
+
 <!--
-Add real captures of the demo scenes in docs/screenshots/ and uncomment:
-
-| Explorer | Mage | Warrior |
-|---|---|---|
-| ![explorer](docs/screenshots/explorador.png) | ![mage](docs/screenshots/mago.png) | ![warrior](docs/screenshots/guerreiro.png) |
-
-| Bug | Tired | Asleep |
-|---|---|---|
-| ![bug](docs/screenshots/bug.png) | ![tired](docs/screenshots/cansado.png) | ![asleep](docs/screenshots/dormindo.png) |
+Still to capture with `/guild <scene>`: bug, cansado (tired) and dormindo (asleep).
+Save them as docs/screenshots/<scene>.png and add them to the table above.
 -->
 
-Terminal captures of each demo scene are coming. Meanwhile, set `demo` to any scene to see it in your own terminal.
 
 ## Development
 

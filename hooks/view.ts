@@ -120,7 +120,7 @@ export const stateText = (cls: TaskClass, anim: Animation): string => {
   if (anim === 'cansado') return 'cansado'
   if (anim === 'dormindo') return 'dormindo'
 
-  return 'de prontidao'
+  return 'de prontidão'
 }
 
 // ▰▰▰▱▱▱: `percent` of `width` cells filled; empty while the figure is unknown.

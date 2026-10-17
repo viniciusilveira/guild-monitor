@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { demoState, SCENES, sceneOf } from './demo'
+import { choiceOf, demoState, SCENES, sceneOf } from './demo'
 import { DEFAULTS } from './guild'
 import { buildView } from './view'
 
@@ -55,4 +55,12 @@ test('tired is a heavy context and sleeping is a long idle, with no turn running
   expect(asleep.chars.every(char => char.anim === 'dormindo')).toBe(true)
   expect(asleep.stamina).toBe(64)
   expect(DEFAULTS.sleepAfterMs > 0).toBe(true)
+})
+
+test('the command word picks a scene, turns the demo off or is unknown', async () => {
+  expect(choiceOf('bug')).toEqual({ kind: 'scene', scene: 'bug' })
+  expect(choiceOf('  Mago ')).toEqual({ kind: 'scene', scene: 'mago' })
+  expect(choiceOf('off')).toEqual({ kind: 'off' })
+  expect(choiceOf('')).toEqual({ kind: 'unknown' })
+  expect(choiceOf('dragao')).toEqual({ kind: 'unknown' })
 })
