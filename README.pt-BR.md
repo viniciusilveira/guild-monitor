@@ -145,12 +145,12 @@ Não precisa reiniciar para trocar de cena: digite `/guild bug` (ou qualquer out
     <td align="center"><img src="docs/screenshots/mago.png" alt="Mago"><br>Mago</td>
     <td align="center"><img src="docs/screenshots/guerreiro.png" alt="Guerreiro"><br>Guerreiro</td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/bug.png" alt="Bug"><br>Bug</td>
+    <td align="center"><img src="docs/screenshots/cansado.png" alt="Cansado"><br>Cansado</td>
+    <td align="center"><img src="docs/screenshots/dormindo.png" alt="Dormindo"><br>Dormindo</td>
+  </tr>
 </table>
-
-<!--
-Faltam as cenas bug, cansado e dormindo, para capturar com `/guild <cena>`.
-Salve como docs/screenshots/<cena>.png e inclua na tabela acima.
--->
 
 
 ## Desenvolvimento

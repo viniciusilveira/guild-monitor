@@ -145,12 +145,12 @@ You do not need to restart to change scenes: type `/guild bug` (or any other sce
     <td align="center"><img src="docs/screenshots/mago.png" alt="Mage"><br>Mage</td>
     <td align="center"><img src="docs/screenshots/guerreiro.png" alt="Warrior"><br>Warrior</td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/bug.png" alt="Bug"><br>Bug</td>
+    <td align="center"><img src="docs/screenshots/cansado.png" alt="Tired"><br>Tired</td>
+    <td align="center"><img src="docs/screenshots/dormindo.png" alt="Asleep"><br>Asleep</td>
+  </tr>
 </table>
-
-<!--
-Still to capture with `/guild <scene>`: bug, cansado (tired) and dormindo (asleep).
-Save them as docs/screenshots/<scene>.png and add them to the table above.
--->
 
 
 ## Development
