@@ -64,3 +64,13 @@ test('the command word picks a scene, turns the demo off or is unknown', async (
   expect(choiceOf('')).toEqual({ kind: 'unknown' })
   expect(choiceOf('dragao')).toEqual({ kind: 'unknown' })
 })
+
+test('the demo shows a history of payments, newest last, in every scene', async () => {
+  for (const scene of SCENES) {
+    const recent = viewOf(scene).recent
+
+    expect(recent.length).toBe(5)
+    expect(recent.map(entry => entry.at)).toEqual([...recent.map(entry => entry.at)].sort((a, b) => a - b))
+    expect(recent.every(entry => entry.at <= NOW)).toBe(true)
+  }
+})

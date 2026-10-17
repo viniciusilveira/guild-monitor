@@ -1,6 +1,6 @@
 {
   "name": "guild-monitor",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Guilda de RPG que monitora a sessão: personagens animados em pixel art, atributos de uso e XP por tarefa",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -39,6 +39,17 @@
         "bug",
         "cansado",
         "dormindo"
+      ]
+    },
+    "layout": {
+      "type": "string",
+      "title": "Layout",
+      "description": "auto: painel lateral onde couber (tela cheia, 110 colunas ou mais) e barra inferior no resto; bar: só a barra; panel: só o painel",
+      "default": "auto",
+      "options": [
+        "auto",
+        "bar",
+        "panel"
       ]
     }
   }

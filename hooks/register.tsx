@@ -9,8 +9,9 @@ import type { Settings } from './guild'
 import { DEFAULTS } from './guild'
 import type { Size } from './layout'
 import { chooseLayout } from './layout'
+import { chooseSidebarLayout } from './sidebar'
 import { encodeFrame } from './raster'
-import { bandTree } from './render'
+import { bandTree, sidebarTree } from './render'
 import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import { completeTurn, createTracker, setPlanMode, startTurn, tick, toolFinished, toolStarted } from './tracker'
@@ -24,6 +25,16 @@ const TICK_MS = 50
 const USAGE_EVERY_MS = 2_000
 
 const viewAtom = atom({ plugin: 'guild-monitor', key: 'view' } as const, null)
+// Whether the side panel is up, so the band yields to it.
+const panelAtom = atom({ plugin: 'guild-monitor', key: 'panel' } as const, false)
+
+const PANEL_ID = 'guild'
+const PANEL_COLUMNS = 36
+// What the person chose about the panel, kept between sessions.
+const UI_KEY = 'guild.ui.v1'
+
+const isClosedByPerson = (stored: unknown): boolean =>
+  typeof stored === 'object' && stored !== null && (stored as { panel?: unknown }).panel === false
 
 // What a Raster of the band shows right now, so the clock only repaints it
 // when the frame or the animation changes.
@@ -90,12 +101,33 @@ const applyGain = async ($: Pick<CoreEngineInterface, 'store' | 'ui'>, tracker: 
   if (gain.leveledUp) $.ui.toast(`${NAMES[gain.cls]} subiu para o nível ${gain.level}!`)
 }
 
+type PanelDollar = Pick<CoreEngineInterface, 'store' | 'ui' | 'state'>
+
+// Opens the pane, which the engine seats beside the transcript when there is room and
+// otherwise leaves undrawn. `remember` keeps it open for the next sessions: a command
+// of the person's does, the opening at the start does not.
+const showPanel = async ($: PanelDollar, remember: boolean): Promise<{ isPlaced: boolean; reason?: string }> => {
+  const opened = await $.ui.open({ id: PANEL_ID, title: 'Guilda', columns: PANEL_COLUMNS })
+  const isPlaced = opened.isPlaced === true
+
+  await update($, panelAtom, () => isPlaced)
+  if (isPlaced && remember) await $.store.set(UI_KEY, { panel: true })
+
+  return { isPlaced, reason: 'reason' in opened ? String(opened.reason) : undefined }
+}
+
+const hidePanel = async ($: PanelDollar): Promise<void> => {
+  await update($, panelAtom, () => false)
+  await $.store.set(UI_KEY, { panel: false })
+}
+
 export const register: Register = (on, options) => {
   const settings: Settings = {
     sleepAfterMs: positive(options.sleepAfterSeconds, DEFAULTS.sleepAfterMs / 1000) * 1000,
     tiredAtPercent: positive(options.tiredAtPercent, DEFAULTS.tiredAtPercent),
   }
   const bandSize = options.bandSize === 'compact' ? 'compact' : 'full'
+  const layoutMode = options.layout === 'bar' || options.layout === 'panel' ? options.layout : 'auto'
   // A demo scene shows made-up figures and ignores the session.
   let scene = sceneOf(options.demo)
 
@@ -114,13 +146,18 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'guild',
-      description: 'Mostra uma cena de demonstração da guilda (ou volta à sessão real)',
-      argumentHint: `[${SCENES.join('|')}|off]`,
+      description: 'Abre ou fecha o painel lateral da guilda e mostra cenas de demonstração',
+      argumentHint: `[panel|bar|${SCENES.join('|')}|off]`,
     })
     tracker = createTracker(parseGuild(await $.store.get(STORE_KEY)), await $.clock.now())
     usage = mergeUsage(usage, usageFrom(await $.session.usage()))
     isReady = true
     cache.signature = ''
+
+    // The panel opens by itself where there is room (the engine decides), unless the person closed it.
+    const kept = await $.store.get(UI_KEY)
+    const wantsPanel = layoutMode === 'panel' || (layoutMode === 'auto' && !isClosedByPerson(kept))
+    if (wantsPanel) await showPanel($, false)
 
     let isBusy = false
     let nextUsageAt = 0
@@ -141,6 +178,7 @@ export const register: Register = (on, options) => {
         const state = stateAt(now)
         const view = buildView(state.tracker, state.usage, now, settings)
         await publishView($, view, cache)
+
         if (bandId === undefined) return
 
         for (const [key, shown] of mounted) {
@@ -165,10 +203,24 @@ export const register: Register = (on, options) => {
   })
 
   // `/guild bug` shows that scene at once; `/guild off` goes back to the real session.
-  on('command.run', { command: 'guild' }, (_$, e) => {
+  on('command.run', { command: 'guild' }, async ($, e) => {
+    const word = e.args.trim().toLowerCase()
+
+    if (word === 'panel') {
+      const opened = await showPanel($, true)
+
+      return { text: opened.isPlaced ? 'Painel aberto' : `Sem espaço para o painel: ${opened.reason}` }
+    }
+
+    if (word === 'bar') {
+      await $.ui.close({ id: PANEL_ID })
+
+      return { text: 'Painel fechado: a barra inferior voltou' }
+    }
+
     const choice = choiceOf(e.args)
 
-    if (choice.kind === 'unknown') return { text: `Use /guild ${SCENES.join(' | ')} | off` }
+    if (choice.kind === 'unknown') return { text: `Use /guild panel | bar | ${SCENES.join(' | ')} | off` }
 
     scene = choice.kind === 'scene' ? choice.scene : undefined
 
@@ -246,8 +298,50 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // The side panel: the same guild as the band, stacked, drawn where the engine seats the pane.
+  on('ui.render', { component: 'Pane', requestId: PANEL_ID }, async ($, e, next) => {
+    if (e.surface !== 'terminal') return next(e)
+
+    // Reading the atom draws the panel again when the view changes.
+    const published = await read($, viewAtom)
+    const now = await $.clock.now()
+    const state = stateAt(now)
+    const view = isReady ? buildView(state.tracker, state.usage, now, settings) : published
+    if (view === null) return next(e)
+
+    const layout = chooseSidebarLayout(e.props.bodyColumns, bandSize, view.bug)
+
+    bandId = e.requestId
+    mounted.clear()
+
+    const tree = sidebarTree($.ui.resolve(e), {
+      view,
+      layout,
+      now,
+      cellsFor: (key, who, size) => {
+        const spec = specFor(who, view, state.tracker, now)
+        mounted.set(key, { who, size, sheetId: spec.sheetId, frame: spec.frame })
+
+        return cellsOf(spec.sheetId, size, spec.frame) ?? ''
+      },
+      onCollapse: () => $.ui.close({ id: PANEL_ID }),
+    })
+
+    return tree ?? next(e)
+  })
+
+  // Closed by the person (the mark, the collapse button) or by `/guild bar`: the band comes back and stays.
+  on('ui.close', { id: PANEL_ID }, async ($, e, next) => {
+    if (e.origin.kind !== 'unload') await hidePanel($)
+
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.surface !== 'terminal' || e.props.hasSurvey) return next(e)
+    if (e.surface !== 'terminal' || e.props.hasSurvey || layoutMode === 'panel') return next(e)
+
+    // While the side panel is up it is the guild's place; the band is its fallback.
+    if (await read($, panelAtom)) return next(e)
 
     // Reading the atom is what draws the band again when it changes; what is drawn is the view
     // of this very moment, so the character, its XP and the figures always agree.
