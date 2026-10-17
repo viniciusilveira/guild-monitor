@@ -99,14 +99,14 @@ Pick one.
 **1. From the marketplace in this repo**
 
 ```sh
-claude plugin marketplace add OWNER/guild-monitor
+claude plugin marketplace add viniciusilveira/guild-monitor
 claude plugin install guild-monitor@guild-monitor
 ```
 
 **2. Load it from a clone, for one session**
 
 ```sh
-git clone https://github.com/OWNER/guild-monitor.git
+git clone https://github.com/viniciusilveira/guild-monitor.git
 claude --plugin-dir ./guild-monitor
 ```
 
