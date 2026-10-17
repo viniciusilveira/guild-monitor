@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { DEFAULTS, DEFEAT_MS } from './guild'
 import { chooseLayout } from './layout'
 import { completeTurn, createTracker, startTurn, toolFinished } from './tracker'
-import { bar, buildView, costText, frameAt, healthColor, mergeUsage, METER_COLORS, percentText, sheetIdFor, stateText, untilReset, usageFrom } from './view'
+import { bar, buildView, costText, frameAt, healthColor, mergeUsage, METER_COLORS, percentText, agoText, sheetIdFor, stateText, untilReset, usageFrom } from './view'
 import { addXp, emptyGuild } from './xp'
 
 const NOW = 1_000_000
@@ -220,4 +220,19 @@ test('the bug goes under the stats of a full character, and beside the others on
   expect(chooseLayout(62, 20, 'full', 'alive')).toEqual({ active: 'full', info: true, others: false, bug: false, bugBelow: true })
   expect(chooseLayout(40, 20, 'full', 'alive')).toEqual({ active: 'full', info: false, others: false, bug: false, bugBelow: false })
   expect(chooseLayout(200, 12, 'full', 'alive')).toEqual({ active: 'mini', info: true, others: true, bug: true, bugBelow: false })
+})
+
+test('how long ago reads as now, minutes or hours', async () => {
+  expect(agoText(NOW, NOW)).toBe('agora')
+  expect(agoText(NOW - 59_000, NOW)).toBe('agora')
+  expect(agoText(NOW - 3 * 60_000, NOW)).toBe('3min')
+  expect(agoText(NOW - 65 * 60_000, NOW)).toBe('1h05')
+  expect(agoText(NOW + 5_000, NOW)).toBe('agora')
+})
+
+test('the view carries the history of XP payments', async () => {
+  let tracker = startTurn(createTracker(emptyGuild(), NOW), { id: 't', prompt: 'oi', now: NOW })
+  tracker = toolFinished(tracker, { use: { tool: 'Read' }, isError: false, now: NOW + 1, durationMs: 0 }).tracker
+
+  expect(buildView(tracker, usage(), NOW + 2).recent).toEqual([{ cls: 'explorador', xp: 2, at: NOW + 1, tool: 'Read' }])
 })

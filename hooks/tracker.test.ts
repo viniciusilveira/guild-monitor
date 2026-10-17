@@ -70,7 +70,11 @@ test('each operation that worked pays its own class at once, by time and size', 
   expect(tracker.guild.explorador.xp).toBe(4)
   expect(tracker.guild.mago.xp).toBe(2)
   expect(tracker.guild.guerreiro.xp).toBe(4)
-  expect(tracker.turn?.earned).toEqual({ explorador: 4, mago: 2, guerreiro: 4 })
+  expect(tracker.recent).toEqual([
+    { cls: 'explorador', xp: 4, at: 1, tool: 'WebSearch' },
+    { cls: 'mago', xp: 2, at: 2, tool: 'TodoWrite' },
+    { cls: 'guerreiro', xp: 4, at: 3, tool: 'Edit' },
+  ])
 })
 
 test('in plan mode every operation belongs to the mage', async () => {
@@ -87,7 +91,7 @@ test('a failed operation and one outside a turn pay nothing', async () => {
   expect(finish(fresh(), edit, 1).tracker.guild).toEqual(emptyGuild())
 })
 
-test('an answered turn pays a little for the answer and keeps what each class earned in the history', async () => {
+test('an answered turn pays a little for the answer, and the answer is in the history too', async () => {
   let tracker = startTurn(fresh(), { id: 't1', prompt: 'corrija o bug', now: 0 })
   tracker = finish(tracker, read, 1).tracker
   tracker = finish(tracker, edit, 2).tracker
@@ -99,10 +103,21 @@ test('an answered turn pays a little for the answer and keeps what each class ea
   expect(done.tracker.guild.explorador.xp).toBe(2)
   expect(done.tracker.guild.mago.xp).toBe(0)
   expect(done.tracker.turn).toBe(null)
-  expect(done.tracker.recent).toEqual([
-    { cls: 'guerreiro', xp: 5, at: 3 },
-    { cls: 'explorador', xp: 2, at: 3 },
+  expect(done.tracker.recent.map(entry => [entry.cls, entry.xp, entry.tool])).toEqual([
+    ['explorador', 2, 'Read'],
+    ['guerreiro', 2, 'Edit'],
+    ['guerreiro', 3, 'resposta'],
   ])
+})
+
+test('the history keeps the latest twenty payments', async () => {
+  let tracker = startTurn(fresh(), { id: 't1', prompt: 'oi', now: 0 })
+
+  for (let i = 0; i < 30; i += 1) tracker = finish(tracker, read, i).tracker
+
+  expect(tracker.recent.length).toBe(20)
+  expect(tracker.recent[0]?.at).toBe(10)
+  expect(tracker.recent[19]?.at).toBe(29)
 })
 
 test('a level is reached by operations and the gain says so', async () => {
