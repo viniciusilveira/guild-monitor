@@ -91,6 +91,7 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     stamina: percentLeft(usage.contextPercent),
     manaResetsAt: hours?.resetsAt ?? null,
     costUsd: usage.costUsd ?? null,
+    counters: { combo: tracker.counters.combo, best: tracker.counters.best, bugs: tracker.counters.bugs },
     recent: [...tracker.recent],
     doing: doingOf(tracker.running),
     sessionSeconds: usage.startedAt === undefined ? null : wholeSeconds(now - usage.startedAt),

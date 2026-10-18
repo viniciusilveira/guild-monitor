@@ -2,6 +2,7 @@ import type { Elements } from 'claude-code'
 
 import type { ViewModel } from '../types'
 import type { TaskClass } from './classify'
+import { counterLine, counterSegments } from './counters'
 import { doingLine } from './doing'
 import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
@@ -193,6 +194,7 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
           ))}
         </Box>
       )}
+      <Text key="counters" color={METER_COLORS.gold}>{counterLine(counterSegments(view.counters))}</Text>
       <Text key="session-time" dimColor>{`sessão ${seconds(view.sessionSeconds)}`}</Text>
       <Text key="turn-time" dimColor>{`turno ${seconds(view.turnSeconds)}`}</Text>
       <Text dimColor>Últimas operações</Text>

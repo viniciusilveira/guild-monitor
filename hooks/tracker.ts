@@ -1,5 +1,7 @@
 import type { TaskClass, ToolUse } from './classify'
 import { classify, classOf, DEFAULT_CLASS } from './classify'
+import type { Counters } from './counters'
+import { NO_COUNTERS, onOperation } from './counters'
 import type { Bug } from './guild'
 import { bugAt, categoryOf, NO_BUG, onToolResult } from './guild'
 import type { Guild } from './xp'
@@ -32,6 +34,8 @@ export type Tracker = {
   active: TaskClass
   bug: Bug
   guild: Guild
+  // Combo, best combo and bugs defeated in this session; memory only, never stored.
+  counters: Counters
   lastActivityAt: number
   recent: readonly Entry[]
   // Calls in progress, oldest first: the last one is the most recent not yet finished.
@@ -46,6 +50,7 @@ export const createTracker = (guild: Guild, now: number): Tracker => ({
   active: DEFAULT_CLASS,
   bug: NO_BUG,
   guild,
+  counters: NO_COUNTERS,
   lastActivityAt: now,
   recent: [],
   running: [],
@@ -111,7 +116,8 @@ export const toolFinished = (
   })
   const resolved = tracker.bug.phase === 'alive' && bug.phase === 'defeated'
   const turn = tracker.turn
-  const moved: Tracker = { ...tracker, bug, lastActivityAt: done.now }
+  const counters = onOperation(tracker.counters, { isError: done.isError, defeated: resolved && !done.isError })
+  const moved: Tracker = { ...tracker, bug, counters, lastActivityAt: done.now }
   if (turn === null || done.isError) return { tracker: moved }
 
   const cls = classOf(done.use, tracker.planMode)

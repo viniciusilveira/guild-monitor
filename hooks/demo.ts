@@ -1,5 +1,6 @@
 import type { Settings } from './guild'
 import { DEFAULTS } from './guild'
+import type { Counters } from './counters'
 import type { Tracker } from './tracker'
 import { callStarted, createTracker, startTurn, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
@@ -30,6 +31,8 @@ const MINUTE_MS = 60_000
 const DEMO_SESSION_MS = 65 * MINUTE_MS
 const DEMO_TURN_MS = 32_000
 const DEMO_LAST_TURN_MS = 4 * MINUTE_MS
+
+const DEMO_COUNTERS: Counters = { combo: 7, best: 9, bugs: 3 }
 
 const demoGuild = () => {
   const levels = [
@@ -87,5 +90,8 @@ const demoHistory = (now: number): Tracker['recent'] => [
 export const demoState = (scene: Scene, now: number, settings: Settings = DEFAULTS): { tracker: Tracker; usage: Usage } => {
   const state = sceneState(scene, now, settings)
 
-  return { tracker: { ...state.tracker, recent: demoHistory(now) }, usage: state.usage }
+  // Made-up scores; the bug scene has just lost its combo to the failing call.
+  const counters: Counters = scene === 'bug' ? { ...DEMO_COUNTERS, combo: 0 } : DEMO_COUNTERS
+
+  return { tracker: { ...state.tracker, counters, recent: demoHistory(now) }, usage: state.usage }
 }

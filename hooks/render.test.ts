@@ -737,3 +737,180 @@ test('timers C17: the resting demo scenes show both times', async ($, on) => {
     expect(await panelShows($, 'turno 4min')).toBe(true)
   }
 })
+
+// Counters: a sequence of calls the screen can see. `failBash` makes the Bash calls that follow fail.
+let failBash = false
+
+const countersSetup = async ($: Engine, on: On, store?: (on: On) => void, says: Says = () => undefined) => {
+  failBash = false
+
+  return setup($, on, tool => tool === 'Bash' && failBash, says, store)
+}
+
+const panelTexts = async ($: Engine, columns = 60) => {
+  const panel = await mountPanel($, columns)
+  const texts = (await panel.findAll({ type: 'Text' })).map(item => item.text as string)
+  await panel.unmount()
+
+  return texts
+}
+
+const countersLine = async ($: Engine, columns = 60) => (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+$/.test(text))
+
+const edits = async ($: Engine, n: number) => {
+  for (let i = 0; i < n; i += 1) await call($, 'Edit', EDIT)
+}
+
+const bash = async ($: Engine, fails: boolean) => {
+  failBash = fails
+  await call($, 'Bash', { command: 'npm test' })
+  failBash = false
+}
+
+const start = async ($: Engine, on: On, store?: (on: On) => void, says?: Says) => {
+  await countersSetup($, on, store, says)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+}
+
+// Nine edits, then three fail-then-pass cycles of npm test, then six edits: combo 7, best 9, 3 defeats.
+const seven9and3 = async ($: Engine) => {
+  await edits($, 9)
+  for (let i = 0; i < 3; i += 1) {
+    await bash($, true)
+    await bash($, false)
+  }
+  await edits($, 6)
+}
+
+test('counters C7: calls from a subagent neither raise nor reset the combo and count no bug', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await edits($, 4)
+  expect(await countersLine($)).toBe('combo x4 · melhor x4 · bugs 0')
+
+  failBash = true
+  await call($, 'Bash', { command: 'npm test', agentId: 'sub1' })
+  failBash = false
+  await call($, 'Edit', { ...EDIT, agentId: 'sub1' })
+  await call($, 'Bash', { command: 'npm test', agentId: 'sub1' })
+
+  expect(await countersLine($)).toBe('combo x4 · melhor x4 · bugs 0')
+})
+
+test('counters C10: the panel shows combo, best combo and defeats between the characters and the timers', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await seven9and3($)
+
+  for (const columns of [40, 60]) {
+    const texts = await panelTexts($, columns)
+    const at = texts.indexOf('combo x7 · melhor x9 · bugs 3')
+    const session = texts.findIndex(text => text.startsWith('sessão'))
+
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBe(session - 1)
+    expect(at).toBeGreaterThan(texts.findLastIndex(text => /Nv\.\d+$/.test(text)))
+    expect(at).toBeGreaterThan(texts.indexOf('ouro $1.50'))
+  }
+})
+
+test('counters C11: the 20 column panel still shows the three counters', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await seven9and3($)
+
+  expect(await countersLine($, 20)).toBe('combo x7 · melhor x9 · bugs 3')
+})
+
+test('counters C12: the compact band keeps its eight lines and shows no counters', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
+  await start($, on)
+  await edits($, 7)
+
+  const band = await mountBand($, 60, 8)
+  const texts = (await band.findAll({ type: 'Text' })).map(item => item.text as string)
+  await band.unmount()
+
+  expect(texts.length).toBeLessThanOrEqual(8)
+  expect(texts.join('\n')).not.toMatch(/combo|melhor|bugs \d/)
+  expect(await countersLine($)).toBe('combo x7 · melhor x7 · bugs 0')
+})
+
+test('counters C13: no store write, trace entry or toast carries the counters', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: Array<[string, unknown]> = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 159 } } : undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push([e.key, e.value])
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(JSON.stringify(e))
+
+      return { value: undefined } as never
+    })
+  }
+  await start($, on, store)
+  await seven9and3($)
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 7_000 } as never)
+
+  expect(await countersLine($)).toBe('combo x7 · melhor x9 · bugs 3')
+  expect(toasts.length).toBeGreaterThan(0)
+  expect(new Set(writes.map(([key]) => key))).toEqual(new Set(['guild.trace.v1', 'guild.v1']))
+  const written = [...writes.map(write => JSON.stringify(write)), ...toasts].join('\n')
+  expect(written).not.toMatch(/combo|melhor|best|bugs|counters/i)
+  const guild = writes.filter(([key]) => key === 'guild.v1').map(([, value]) => Object.keys(value as object))
+  for (const keys of guild) expect(keys.every(key => ['mago', 'guerreiro', 'explorador'].includes(key))).toBe(true)
+})
+
+test('counters C14: a new session zeroes the combo, the best combo and the defeats', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await edits($, 5)
+  await bash($, true)
+  await bash($, false)
+  await edits($, 3)
+  expect(await countersLine($)).toBe('combo x4 · melhor x5 · bugs 1')
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
+
+  expect(await countersLine($)).toBe('bugs 0')
+})
+
+test('counters C16: every demo scene shows made-up counters', async ($, on) => {
+  await countersSetup($, on)
+
+  for (const scene of ['explorador', 'mago', 'guerreiro', 'cansado', 'dormindo']) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+    expect(await countersLine($)).toBe('combo x7 · melhor x9 · bugs 3')
+  }
+
+  await $.command.run({ command: 'guild', args: 'bug' } as never)
+  expect(await countersLine($)).toBe('melhor x9 · bugs 3')
+  expect((await panelTexts($)).join('\n')).not.toMatch(/combo/)
+})
+
+test('counters C18: a call a hook denied and one the person turned down leave the combo of 4 alone', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on, undefined, tool => (tool === 'Bash' ? 'Permission for this tool use was denied. Try something else.' : undefined))
+  await edits($, 4)
+
+  refused.add('Edit')
+  await call($, 'Edit', EDIT)
+  refused.delete('Edit')
+  await bash($, true)
+
+  expect(await countersLine($)).toBe('combo x4 · melhor x4 · bugs 0')
+  expect(await panelShows($, 'bug na área!')).toBe(false)
+
+  await edits($, 1)
+  expect(await countersLine($)).toBe('combo x5 · melhor x5 · bugs 0')
+})
+
+test('counters C19: the combo shows from the third success in a row', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  expect(await countersLine($)).toBe('bugs 0')
+
+  await edits($, 1)
+  expect(await countersLine($)).toBe('bugs 0')
+  await edits($, 1)
+  expect(await countersLine($)).toBe('bugs 0')
+  await edits($, 1)
+  expect(await countersLine($)).toBe('combo x3 · melhor x3 · bugs 0')
+})
