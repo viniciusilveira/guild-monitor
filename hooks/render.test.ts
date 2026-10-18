@@ -50,6 +50,11 @@ let sessionStart = 0
 // The rate limits `session.usage` reports: a test sets `nextLimits` before `setup` and `limits` while the clock runs.
 let nextLimits: unknown[] = []
 let limits: unknown[] = []
+// A test that moves the time itself (`jump`) instead of letting a fake clock tick through it: `nextFast` before
+// `setup`, then `fakeNow` is what `$.clock.now()` answers and no tick runs.
+let nextFast = false
+let isFast = false
+let fakeNow = 0
 
 // The world beneath the guild plugin: a clock the test moves, a store holding a guild whose warrior is at level 3,
 // the session's figures and a tool runner that fails the calls the test says.
@@ -63,8 +68,17 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   nextStart = 0
   limits = nextLimits
   nextLimits = []
-  const clock = mock.clock(on, { now: START })
+  isFast = nextFast
+  nextFast = false
+  fakeNow = START
+  // A test that moves the time by hand answers the clock itself and runs no tick.
+  const clock = isFast ? ({} as ReturnType<typeof mock.clock>) : mock.clock(on, { now: START })
+  if (isFast) {
+    on('clock.now', async () => ({ value: fakeNow }) as never)
+    on('clock.every', async () => ({ value: undefined }) as never)
+  }
   mountStore(on)
+  on('session.measure', async (_$, e) => ({ changed: (e as { changed: string[] }).changed }) as never)
   on('session.usage', async () => ({ value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: limits, cost: { usd: 1.5 } } }) as never)
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
@@ -942,13 +956,22 @@ const feed = async (clock: Clock, minutes: number, at: (minute: number) => Limit
 // 33% rising a point a minute: about 50 minutes left, well before a reset 5 hours away.
 const hurried = (minute: number): Limit[] => [five(33 + minute)]
 
-// The readings span a little less than the minutes that ran: 12 of them cover the 10 the 5h window asks for.
-const start5 = async ($: Engine, on: On, fails: Fail = () => false) => {
-  nextLimits = hurried(0)
-  const clock = await setup($, on, fails)
-  await feed(clock, 12, hurried)
+// The time moves by hand: at `minute` the session measurement brings these limits. The readings are the same as
+// the ones the 2-second tick takes, without the thousands of ticks of a fake clock running through the minutes.
+const jump = async ($: Engine, minute: number, rateLimits: Limit[]) => {
+  fakeNow = START + minute * MINUTE
+  await $.session.measure({ context: { percent: 30 }, rateLimits, changed: ['rateLimits'] } as never)
+}
 
-  return clock
+const jumps = async ($: Engine, from: number, to: number, at: (minute: number) => Limit[]) => {
+  for (let minute = from; minute <= to; minute += 1) await jump($, minute, at(minute))
+}
+
+// Readings every minute for 12 minutes: they span the 10 the 5h window asks for.
+const start5 = async ($: Engine, on: On, fails: Fail = () => false) => {
+  nextFast = true
+  await setup($, on, fails)
+  await jumps($, 0, 12, hurried)
 }
 
 // Both windows for over two hours: 5h a point every 2 minutes (about 50 minutes left, the reset 5 hours away) and
@@ -956,11 +979,9 @@ const start5 = async ($: Engine, on: On, fails: Fail = () => false) => {
 const both = (minute: number): Limit[] => [five(5 + Math.floor(minute / 2), 300), seven(20 + Math.floor(minute / 50), 24 * 60)]
 
 const startBoth = async ($: Engine, on: On, fails: Fail = () => false) => {
-  nextLimits = both(0)
-  const clock = await setup($, on, fails)
-  await feed(clock, 140, both)
-
-  return clock
+  nextFast = true
+  await setup($, on, fails)
+  await jumps($, 0, 140, both)
 }
 
 type Item = { text: string; color: unknown }
@@ -996,7 +1017,7 @@ const minutesOf = (text: string): number => {
   return Number(/~(\d+)min/.exec(text)?.[1])
 }
 
-test('forecast C14: the panel shows a line per window after the legend, red only before the reset', { timeoutMs: 60_000, options: { layout: 'bar' } }, async ($, on) => {
+test('forecast C14: the panel shows a line per window after the legend, red only before the reset', { options: { layout: 'bar' } }, async ($, on) => {
   await startBoth($, on)
 
   const items = await panelItems($)
@@ -1020,11 +1041,11 @@ test('forecast C14: the panel shows a line per window after the legend, red only
   expect(texts.findIndex(text => /^sessão /.test(text))).toBeGreaterThan(texts.indexOf(week?.text ?? ''))
 })
 
-test('forecast C14: a 5h pace that outlasts the reset says so and is not red', { timeoutMs: 60_000, options: { layout: 'bar' } }, async ($, on) => {
+test('forecast C14: a 5h pace that outlasts the reset says so and is not red', { options: { layout: 'bar' } }, async ($, on) => {
   // A point every 6 minutes leaves hours; the reset is 100 minutes away.
-  nextLimits = [five(10, 100)]
-  const clock = await setup($, on)
-  await feed(clock, 30, minute => [five(10 + Math.floor(minute / 6), 100)])
+  nextFast = true
+  await setup($, on)
+  await jumps($, 0, 30, minute => [five(10 + Math.floor(minute / 6), 100)])
 
   const calm = (await panelItems($)).find(isForecast)
   expect(calm?.text).toBe('5h dura até o reset')
@@ -1045,9 +1066,9 @@ test('forecast C15: the 20 column panel lines are at most 20 characters', { opti
 })
 
 test('forecast C16: the compact band keeps eight lines and yields to the bug', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
-  nextLimits = hurried(0)
-  const clock = await setup($, on, tool => tool === 'Bash')
-  await feed(clock, 12, hurried)
+  nextFast = true
+  await setup($, on, tool => tool === 'Bash')
+  await jumps($, 0, 12, hurried)
   await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
 
   const quiet = (await bandItems($, 60, 8)).map(item => item.text)
@@ -1095,10 +1116,10 @@ test('forecast C17: the full band shows one short line within sixteen rows', { o
 })
 
 test('forecast C18: without enough readings no forecast line appears', { options: { layout: 'bar' } }, async ($, on) => {
-  nextLimits = hurried(0)
-  const clock = await setup($, on)
+  nextFast = true
+  await setup($, on)
   // Three minutes of readings: samples, but not the 10 minutes the 5h window asks for.
-  await feed(clock, 3, hurried)
+  await jumps($, 0, 3, hurried)
 
   for (const items of [await panelItems($), await bandItems($)]) {
     expect(items.some(isForecast)).toBe(false)
@@ -1107,9 +1128,9 @@ test('forecast C18: without enough readings no forecast line appears', { options
 })
 
 test('forecast C18: outside a subscription no forecast line appears', { options: { layout: 'bar' } }, async ($, on) => {
-  nextLimits = []
-  const clock = await setup($, on)
-  await feed(clock, 15, () => [])
+  nextFast = true
+  await setup($, on)
+  await jumps($, 0, 15, () => [])
 
   expect((await panelItems($)).some(item => isForecast(item) || WORDS.test(item.text))).toBe(false)
   expect((await bandItems($)).some(item => isForecast(item) || WORDS.test(item.text))).toBe(false)
@@ -1150,10 +1171,10 @@ test('forecast C21: no store write, trace entry or toast carries the forecast', 
       return { value: undefined } as never
     })
   }
-  nextLimits = hurried(0)
-  const clock = await setup($, on, () => false, () => undefined, store)
+  nextFast = true
+  await setup($, on, () => false, () => undefined, store)
   await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
-  await feed(clock, 12, hurried)
+  await jumps($, 0, 12, hurried)
   await call($, 'Edit', EDIT)
   await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 7_777 } as never)
 
@@ -1166,23 +1187,21 @@ test('forecast C21: no store write, trace entry or toast carries the forecast', 
 })
 
 test('forecast C22: a window reset takes the line away until new samples are enough', { options: { layout: 'bar' } }, async ($, on) => {
-  const clock = await start5($, on)
+  await start5($, on)
   const line = async () => (await panelItems($)).find(item => item.text.startsWith('5h '))
   expect(await line()).toBeDefined()
 
   // The percent drops: a new window, whose reset time is new too. A single reading says nothing.
-  limits = [five(2, 600)]
-  await clock.advance(MINUTE)
+  await jump($, 13, [five(2, 600)])
   expect(await line()).toBeUndefined()
   expect((await bandItems($)).some(isForecast)).toBe(false)
 
   // It comes back with new readings, 10 minutes of them, at the new pace.
-  await feed(clock, 12, minute => [five(2 + minute, 600)])
+  await jumps($, 14, 25, minute => [five(2 + (minute - 13), 600)])
   expect((await line())?.text).toMatch(/^5h esgota em ~/)
 
   // Only the reset time changing, with the percent still rising, is a reset too.
-  limits = [five(40, 900)]
-  await clock.advance(MINUTE)
+  await jump($, 26, [five(40, 900)])
   expect(await line()).toBeUndefined()
 })
 
@@ -1219,25 +1238,30 @@ test('forecast C23: every demo scene shows no forecast when showForecast is off'
 })
 
 test('forecast C13: readings that come with the session measurement count too', { options: { layout: 'bar' } }, async ($, on) => {
-  on('session.measure', async (_$, e) => ({ changed: (e as { changed: string[] }).changed }) as never)
-  const clock = await setup($, on)
+  nextFast = true
+  await setup($, on)
 
   // The session itself reports no limits; only the measurements do, a point a minute.
-  for (let minute = 0; minute <= 12; minute += 1) {
-    await $.session.measure({ context: { percent: 30 }, rateLimits: [five(33 + minute)], changed: ['rateLimits'] } as never)
-    await clock.advance(MINUTE)
-  }
+  await jumps($, 0, 12, hurried)
+
+  expect((await panelItems($)).find(isForecast)?.text).toMatch(/^5h esgota em ~/)
+})
+
+test('forecast C13: readings the session takes on its own every 2 seconds count too', { options: { layout: 'bar' } }, async ($, on) => {
+  nextLimits = hurried(0)
+  const clock = await setup($, on)
+  // Twelve minutes is the least that spans the 10 the 5h window asks for; a point a minute, read by the tick.
+  await feed(clock, 12, hurried)
 
   expect((await panelItems($)).find(isForecast)?.text).toMatch(/^5h esgota em ~/)
 })
 
 test('forecast C13: a window the engine stops reporting is not read again as idle', { options: { layout: 'bar' } }, async ($, on) => {
-  const clock = await start5($, on)
+  await start5($, on)
 
   // The 5h window is gone from the reports (the session keeps its last figure): ten minutes later nothing is said,
   // not "sem consumo" and not the old pace.
-  limits = [seven(20)]
-  await feed(clock, 10, () => [seven(20)])
+  await jumps($, 13, 23, () => [seven(20)])
 
   const items = await panelItems($)
   expect(items.some(item => /^MP /.test(item.text))).toBe(true)
