@@ -86,6 +86,17 @@ Level `n` starts at `40 × (n − 1)²` XP: level 2 at 40, level 3 at 160, level
 
 When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). If no such call comes, the bug leaves on its own after **2 minutes without a new tool error**; a new error restarts that count. Calls refused by a permission or a hook, and the ones **you reject yourself** (a declined plan, a denied permission, an interrupted question), are not failures: they raise no bug, defeat no live bug and pay no XP. In `/guild trace` they show as `RECUSADA`, not `ERRO`. Spotting a rejection is best effort: a rejected plan or question is always recognized, but for the other tools it relies on the refusal text of the engine, which can change between versions, and a shell command you interrupt while it runs still raises a bug.
 
+## What the character is doing now
+
+A line at the top of the side panel (and at the top of the stats in the bottom band, when they fit) says what the active character is doing right now, for example `Warrior: editando register.tsx` or `Explorer: pesquisando na web`. The text is in Portuguese, like the rest of the interface.
+
+- The line follows the tool calls: it appears when a call starts and goes away when it ends, whether it succeeded, failed or was refused by a permission or a hook. With several calls in parallel, the most recent one that has not finished wins. A call that waits for your permission shows until you answer; if it is refused, the line goes away.
+- One verb per kind of tool: `lendo` (Read), `buscando` (Grep, Glob), `pesquisando na web` (WebSearch, WebFetch), `editando` (Edit), `escrevendo` (Write), `executando` (Bash), `planejando` (plans and to-do lists) and `chamando um aliado` (subagents; what the subagent does inside is not shown).
+- The target is only the file name, without the directory, or the first three words of a shell command, cut at 24 characters with an ellipsis. It exists **only on screen and in memory**: it is never saved to the store or to the `/guild trace` log.
+- When nothing runs, or the turn ends, the line shows the resting state: `de prontidão`, `cansado` or `dormindo`.
+- In a narrow panel the line gives up the name, then the target, and ends as the verb alone.
+- The demo scenes `explorador`, `mago`, `guerreiro` and `bug` show a call in progress; `cansado` and `dormindo` show the resting state. The screenshots below were taken before this line existed and do not show it.
+
 ## Side panel
 
 On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 columns or more), the guild opens as a **panel to the left of the conversation**:
@@ -204,7 +215,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 
