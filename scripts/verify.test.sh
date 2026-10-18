@@ -30,8 +30,14 @@ case "${1:-}" in
     run "$types_bad" "$test_ok" "$validate_ok" && { echo "fail: verify should fail on a type error"; exit 1; }
     grep -qx tests "$log" && { echo "fail: tests ran after a type error"; exit 1; }
     ;;
+  all)
+    for each in order fail-test fail-types; do
+      "$0" "$each" || exit 1
+    done
+    exit 0
+    ;;
   *)
-    echo "usage: verify.test.sh order|fail-test|fail-types" >&2
+    echo "usage: verify.test.sh order|fail-test|fail-types|all" >&2
     exit 2
     ;;
 esac

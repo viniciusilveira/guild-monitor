@@ -3,7 +3,7 @@
 # in that order, stopping at the first failure. People, agents and CI run the same thing.
 #
 # Each step can be replaced through an environment variable, which the script's own
-# tests use to check the order: VERIFY_TYPES_CMD, VERIFY_TEST_CMD, VERIFY_VALIDATE_CMD.
+# tests use to check the order (the default test step also runs those script tests): VERIFY_TYPES_CMD, VERIFY_TEST_CMD, VERIFY_VALIDATE_CMD.
 # The engine writes the type declarations when it loads the plugin in a session, so a
 # machine that never did (CI) skips the type check explicitly with VERIFY_SKIP_TYPES=1.
 set -euo pipefail
@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 types_cmd="${VERIFY_TYPES_CMD:-npx --no-install tsc -p .}"
-test_cmd="${VERIFY_TEST_CMD:-claude plugin test .}"
+test_cmd="${VERIFY_TEST_CMD:-claude plugin test . && scripts/verify.test.sh all}"
 validate_cmd="${VERIFY_VALIDATE_CMD:-claude plugin validate .}"
 
 step() {
