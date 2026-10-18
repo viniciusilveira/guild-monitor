@@ -19,7 +19,7 @@ A [Claude Code](https://claude.com/claude-code) mod that turns your session moni
 - **Animated in the terminal.** Full-size sprites (32×16 cells) drawn with half-block characters and truecolor, with no image protocol needed. Works in iTerm2, foot and inside tmux.
 - **Meters** for the 7-day limit, the 5-hour limit, the context window and the session cost.
 - **XP and levels per class**, paid per operation and kept between sessions.
-- **A bug** that shows up every time a tool call fails and is defeated when it works again.
+- **A bug** that shows up every time a tool call fails, is defeated when it works again and leaves on its own after 2 minutes without a new error.
 
 ## The guild
 
@@ -84,7 +84,7 @@ Level `n` starts at `40 × (n − 1)²` XP: level 2 at 40, level 3 at 160, level
 
 ## The bug
 
-When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). Calls refused by a permission or a hook are not failures.
+When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). If no such call comes, the bug leaves on its own after **2 minutes without a new tool error**; a new error restarts that count. Calls refused by a permission or a hook are not failures.
 
 ## Side panel
 

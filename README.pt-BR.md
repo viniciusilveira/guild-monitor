@@ -19,7 +19,7 @@ Um mod do [Claude Code](https://claude.com/claude-code) que transforma o monitor
 - **Animados no terminal.** Sprites em tamanho cheio (32×16 células) desenhados com meio-bloco e truecolor, sem precisar de protocolo de imagem. Funciona no iTerm2, no foot e dentro do tmux.
 - **Medidores** para o limite de 7 dias, o de 5 horas, a janela de contexto e o custo da sessão.
 - **XP e nível por classe**, pagos por operação e guardados entre sessões.
-- **Um bug** que aparece a cada chamada de ferramenta que falha e é derrotado quando ela volta a funcionar.
+- **Um bug** que aparece a cada chamada de ferramenta que falha, é derrotado quando ela volta a funcionar e some sozinho após 2 minutos sem novo erro.
 
 ## A guilda
 
@@ -84,7 +84,7 @@ O nível `n` começa em `40 × (n − 1)²` de XP: nível 2 com 40, nível 3 com
 
 ## O bug
 
-Quando uma chamada de ferramenta falha, o bug aparece embaixo dos status do personagem ativo. Uma chamada bem-sucedida **do mesmo tipo** depois dele o derrota (em comandos de shell, o mesmo programa e subcomando: `npm test`, `git push`; nas demais ferramentas, a mesma ferramenta). Chamadas recusadas por permissão ou por um hook não contam como falha.
+Quando uma chamada de ferramenta falha, o bug aparece embaixo dos status do personagem ativo. Uma chamada bem-sucedida **do mesmo tipo** depois dele o derrota (em comandos de shell, o mesmo programa e subcomando: `npm test`, `git push`; nas demais ferramentas, a mesma ferramenta). Se nenhuma chamada do mesmo tipo voltar, o bug some sozinho após **2 minutos sem novo erro de ferramenta**; um novo erro reinicia essa contagem. Chamadas recusadas por permissão ou por um hook não contam como falha.
 
 ## Painel lateral
 
