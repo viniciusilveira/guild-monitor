@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
 import { counterLine, counterSegments } from './counters'
-import { createTracker, startTurn, toolFinished } from './tracker'
+import { DEFEAT_MS, EXPIRE_MS } from './guild'
+import { createTracker, startTurn, tick, toolFinished } from './tracker'
 import type { Tracker } from './tracker'
 import { emptyGuild } from './xp'
 
@@ -89,4 +90,28 @@ test('counters C15: a segment added to the list shows after the existing ones, j
 
   expect(counterLine(segments)).toBe('combo x7 · melhor x9 · bugs 3 · dano 12')
   expect(counterLine(['x'])).toBe('x')
+})
+
+test('counters C20: a bug that expires by time, or a defeat whose animation ends, adds no defeat', async () => {
+  const failed = run([[npmTest, { isError: true }]])
+  const expired = tick(failed, failed.bug.since + EXPIRE_MS)
+
+  expect(expired.bug.phase).toBe('none')
+  expect(expired.counters).toEqual({ combo: 0, best: 0, bugs: 0 })
+  expect(run([[npmTest]], expired).counters).toEqual({ combo: 1, best: 1, bugs: 0 })
+
+  const defeated = run([[npmTest, { isError: true }], [npmTest]])
+  expect(defeated.counters.bugs).toBe(1)
+
+  const gone = tick(defeated, defeated.bug.since + DEFEAT_MS)
+  expect(gone.bug.phase).toBe('none')
+  expect(gone.counters).toEqual({ combo: 1, best: 1, bugs: 1 })
+})
+
+test('counters C21: calls outside a turn count in the combo and in the defeats', async () => {
+  const idle = createTracker(emptyGuild(), 0)
+  expect(idle.turn).toBe(null)
+
+  expect(run([[edit], [edit], [edit]], idle).counters).toEqual({ combo: 3, best: 3, bugs: 0 })
+  expect(run([[npmTest, { isError: true }], [npmTest]], idle).counters).toEqual({ combo: 1, best: 1, bugs: 1 })
 })
