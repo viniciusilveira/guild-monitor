@@ -114,6 +114,7 @@ It opens by itself from 144 columns (110 once you opened it yourself), unless yo
 |---|---|
 | `/guild panel` | open the side panel and keep opening it |
 | `/guild bar` | close the panel and go back to the bottom band |
+| `/guild trace [N\|clear]` | print the record of the last N tool calls (default 20): who was on screen, who got the XP, and a summary; `clear` erases it. Only tool names, classes and the program name of a shell command are kept, never prompts, paths, arguments or variables |
 | `/guild <scene>` | show a demo scene (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` returns to the real session |
 
 ## Requirements
