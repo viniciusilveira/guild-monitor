@@ -19,7 +19,7 @@ import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import type { TraceEntry } from './trace'
 import { appendTrace, describeTrace, parseTrace, programOf } from './trace'
-import { callEnded, callStarted, completeTurn, createTracker, setPlanMode, startTurn, tick, toolFinished, toolStarted } from './tracker'
+import { callEnded, callStarted, completeTurn, createTracker, setPlanMode, startTurn, tick, tokensSpent, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
 import { buildView, frameAt, mergeUsage, NAMES, sheetIdFor, usageFrom } from './view'
 import { emptyGuild, parseGuild } from './xp'
@@ -370,9 +370,17 @@ export const register: Register = (on, options) => {
   }).catch((_$, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId !== undefined || scene !== undefined) return next(e)
+    if (scene !== undefined) return next(e)
 
     const now = await $.clock.now()
+    // What the turn spent: a subagent's turn only adds to its own total and goes no further.
+    tracker = tokensSpent(tracker, e.usage, e.agentId !== undefined)
+    if (e.agentId !== undefined) {
+      await publishView($, viewOf(tracker, usage, now), cache)
+
+      return next(e)
+    }
+
     const done = completeTurn(tracker, { id: e.turnId, reason: e.reason, now, durationMs: e.durationMs })
     tracker = done.tracker
     await publishView($, viewOf(tracker, usage, now), cache)

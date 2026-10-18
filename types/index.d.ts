@@ -55,7 +55,16 @@ export type ViewModel = {
   // that ended (null before the first). Whole seconds, so the view only changes when a second does.
   sessionSeconds: number | null
   turnSeconds: number | null
+  // The tokens spent, in memory and on screen only: the last main-agent turn with usage, the main agent's total
+  // and the subagents' total (each null until there is one); null for all when no turn has reported usage.
+  tokens: { turn: TokenLine | null; session: TokenLine | null; subagents: TokenLine | null } | null
+  // The model of the last main-agent turn with usage, null before one.
+  model: string | null
 }
+
+// One line of the tokens on screen: the whole prompt read (uncached + cache read + cache written), what was
+// generated and the cache hit rate in percent (null while undefined), with whether that rate is low.
+export type TokenLine = { input: number; output: number; cache: number | null; low: boolean }
 
 declare module 'claude-code' {
   interface PluginState {

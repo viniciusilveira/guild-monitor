@@ -2,6 +2,9 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { SCENES as DEMO_SCENES } from './demo'
+import { URGENT_COLOR } from './view'
+
 const START = 1_000_000
 const MINUTE = 60_000
 
@@ -1268,4 +1271,272 @@ test('forecast C13: a window the engine stops reporting is not read again as idl
   expect(items.some(item => /^MP /.test(item.text))).toBe(true)
   expect(items.some(item => item.text.startsWith('5h '))).toBe(false)
   expect(items.some(item => /sem consumo/.test(item.text))).toBe(false)
+})
+
+// Tokens: the time is moved by hand (`nextFast`), so no test runs a tick of a fake clock.
+type Spent = { input?: number; read?: number; written?: number; output?: number; model?: string }
+
+const usageOf = (spent: Spent) => ({
+  input_tokens: spent.input ?? 0,
+  cache_read_input_tokens: spent.read ?? 0,
+  cache_creation_input_tokens: spent.written ?? 0,
+  output_tokens: spent.output ?? 0,
+  model: spent.model ?? 'claude-sonnet-5-5',
+})
+
+// 142k of prompt, 87% of it from the cache, and 18k generated.
+const BIG: Spent = { input: 6_000, read: 123_540, written: 12_460, output: 18_000 }
+
+const finish = async ($: Engine, turnId: string, spent?: Spent, more: Record<string, unknown> = {}) => {
+  await $.turn.complete({ turnId, reason: 'answer', answer: 'feito', durationMs: 1_000, ...(spent === undefined ? {} : { usage: usageOf(spent) }), ...more } as never)
+}
+
+const TOKEN_LINE = /^(tokens  |sessão  |subagentes )/
+const tokenTexts = async ($: Engine, columns = 60) => (await panelItems($, columns)).filter(item => TOKEN_LINE.test(item.text))
+const fast = async ($: Engine, on: On) => {
+  nextFast = true
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+}
+
+const OPTIONS = { options: { layout: 'bar' } } as const
+
+test('tokens C5: no line and no model before any turn with usage', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1')
+
+  expect(await tokenTexts($)).toEqual([])
+  const items = await panelItems($)
+  expect(items.some(item => /sonnet|input|cache/.test(item.text))).toBe(false)
+  expect(items.map(item => item.text)).toContain('Guerreiro Nv.3')
+})
+
+test('tokens C6: a turn with usage shows the turn and session lines', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', BIG)
+
+  expect((await tokenTexts($)).map(item => item.text)).toEqual([
+    'tokens  input 142k · output 18k · cache 87%',
+    'sessão  input 142k · output 18k · cache 87%',
+  ])
+})
+
+test('tokens C7: the session adds the turns and the rate is of the sum', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', { input: 100, output: 10 })
+  await $.turn.start({ text: 'outro', turnId: 't2' } as never)
+  await finish($, 't2', { read: 900, output: 20 })
+
+  expect((await tokenTexts($)).map(item => item.text)).toEqual([
+    'tokens  input 900 · output 20 · cache 100%',
+    'sessão  input 1k · output 30 · cache 90%',
+  ])
+})
+
+test('tokens C8: turns without usage add nothing and keep the lines', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1')
+  expect(await tokenTexts($)).toEqual([])
+
+  await $.turn.start({ text: 'um', turnId: 't2' } as never)
+  await finish($, 't2', BIG)
+  const before = (await tokenTexts($)).map(item => item.text)
+  expect(before.length).toBe(2)
+
+  await $.turn.start({ text: 'dois', turnId: 't3' } as never)
+  await finish($, 't3')
+  await $.turn.start({ text: 'tres', turnId: 't4' } as never)
+  await $.turn.complete({ turnId: 't4', reason: 'aborted', isAborted: true, answer: '', durationMs: 10 } as never)
+  await $.turn.start({ text: 'quatro', turnId: 't5' } as never)
+  await $.turn.complete({ turnId: 't5', reason: 'error', answer: '', durationMs: 10 } as never)
+  await $.turn.complete({ turnId: 's1', agentId: 'sub1', reason: 'aborted', isAborted: true, answer: '', durationMs: 10 } as never)
+
+  expect((await tokenTexts($)).map(item => item.text)).toEqual(before)
+})
+
+test('tokens C9: a low rate is red and the threshold is 50', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', { input: 51, read: 49, output: 1 })
+  expect((await tokenTexts($)).map(item => item.color)).toEqual([URGENT_COLOR, URGENT_COLOR])
+
+  await $.turn.start({ text: 'b', turnId: 't2' } as never)
+  await finish($, 't2', { input: 5_000, read: 5_000, output: 1 })
+  const [turn, session] = await tokenTexts($)
+  expect(turn?.text).toMatch(/cache 50%$/)
+  expect(turn?.color).not.toBe(URGENT_COLOR)
+  expect(session?.text).toMatch(/cache 50%$/)
+  expect(session?.color).not.toBe(URGENT_COLOR)
+
+  await $.turn.start({ text: 'c', turnId: 't3' } as never)
+  await finish($, 't3', BIG)
+  expect((await tokenTexts($)).some(item => item.color === URGENT_COLOR)).toBe(false)
+})
+
+test('tokens C10: subagent turns add to their own line only', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', BIG)
+  await finish($, 's1', { input: 12_000, read: 11_400, written: 6_600, output: 4_100 }, { agentId: 'sub1' })
+
+  const lines = await tokenTexts($)
+  expect(lines.map(item => item.text)).toEqual([
+    'tokens  input 142k · output 18k · cache 87%',
+    'sessão  input 142k · output 18k · cache 87%',
+    'subagentes input 30k · output 4,1k · cache 38%',
+  ])
+  expect(lines[2]?.color).toBe(URGENT_COLOR)
+
+  await finish($, 's2', { input: 10_000, read: 0, output: 1_000 }, { agentId: 'sub1' })
+  expect((await tokenTexts($)).map(item => item.text)).toEqual([
+    'tokens  input 142k · output 18k · cache 87%',
+    'sessão  input 142k · output 18k · cache 87%',
+    'subagentes input 40k · output 5,1k · cache 29%',
+  ])
+
+  // A later main turn leaves the subagents' total alone.
+  await $.turn.start({ text: 'b', turnId: 't2' } as never)
+  await finish($, 't2', { input: 1_000, output: 1_000 })
+  expect((await tokenTexts($)).map(item => item.text)).toEqual([
+    'tokens  input 1k · output 1k · cache 0%',
+    'sessão  input 143k · output 19k · cache 86%',
+    'subagentes input 40k · output 5,1k · cache 29%',
+  ])
+})
+
+test('tokens C11: a subagent alone shows only its line', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 's1', { input: 30_000, output: 2_000 }, { agentId: 'sub1' })
+
+  expect((await tokenTexts($)).map(item => item.text)).toEqual(['subagentes input 30k · output 2k · cache 0%'])
+  expect((await panelItems($)).some(item => /sonnet/.test(item.text))).toBe(false)
+})
+
+test('tokens C12: a subagent turn leaves the main turn open and pays nothing', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', { input: 10, output: 1, model: 'claude-opus-4-1-20250805' })
+  await $.turn.start({ text: 'b', turnId: 't2' } as never)
+  const xp = (await panelItems($)).find(item => item.text.startsWith('XP '))?.text
+  fakeNow += 5_000
+  expect((await panelItems($)).some(item => item.text === 'turno 5s')).toBe(true)
+
+  // Even with the very id of the main turn, a subagent's end is not the main turn's.
+  await finish($, 't2', { input: 5, output: 1, model: 'claude-haiku-9' }, { agentId: 'sub1' })
+  fakeNow += 5_000
+
+  const items = await panelItems($)
+  expect(items.some(item => item.text === 'turno 10s')).toBe(true)
+  expect(items.find(item => item.text.startsWith('XP '))?.text).toBe(xp)
+  expect(items.some(item => item.text === 'opus-4-1')).toBe(true)
+  expect(items.some(item => item.text === 'haiku-9')).toBe(false)
+})
+
+test('tokens C13: the model is dim beside the name', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', BIG)
+
+  // 60 columns put the stats beside the character in 24: only the family fits next to the name.
+  const panel = await mountPanel($)
+  const name = await panel.find({ key: 'name' })
+  const model = await panel.find({ type: 'Text', text: 'sonnet' })
+  const texts = (await panel.findAll({ type: 'Text' })).map(item => item.text)
+  await panel.unmount()
+
+  expect(name?.props.flexDirection).toBe('row')
+  expect(model?.props.dimColor).toBe(true)
+  expect(texts.indexOf('sonnet')).toBe(texts.indexOf('Guerreiro Nv.3') + 1)
+
+  // Below the character the whole name fits; with no room beside the name the model is left out, not cut.
+  const whole = await mountPanel($, 40)
+  expect((await whole.find({ type: 'Text', text: 'sonnet-5-5' }))?.props.dimColor).toBe(true)
+  await whole.unmount()
+  expect((await panelItems($, 20)).some(item => /^sonnet/.test(item.text))).toBe(false)
+})
+
+test('tokens C14: a narrow panel keeps every line inside its width', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', BIG)
+  await finish($, 's1', { input: 12_000, read: 11_400, written: 6_600, output: 4_100 }, { agentId: 'sub1' })
+
+  for (const columns of [20, 60]) {
+    const lines = await tokenTexts($, columns)
+    expect(lines.length).toBeGreaterThanOrEqual(2)
+    for (const line of lines) expect(line.text.length).toBeLessThanOrEqual(columns)
+  }
+
+  expect((await tokenTexts($, 20)).map(item => item.text)).toEqual(['tokens  142k/18k 87%', 'sessão  142k/18k 87%', 'subagentes 38%'])
+  expect((await tokenTexts($, 60))[0]?.text).toBe('tokens  input 142k · output 18k · cache 87%')
+})
+
+test('tokens C15: the bands show no token line, only the model', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
+  await fast($, on)
+  await finish($, 't1', BIG)
+  await finish($, 's1', { input: 12_000, output: 4_100 }, { agentId: 'sub1' })
+
+  for (const [columns, rows] of [
+    [60, 8],
+    [120, 20],
+  ] as const) {
+    const items = await bandItems($, columns, rows)
+    const texts = items.map(item => item.text)
+    expect(texts.some(text => TOKEN_LINE.test(text) || /input|cache \d/.test(text))).toBe(false)
+    expect(texts).toContain('sonnet-5-5')
+    // The model shares the line of the name: it is one Text more but no line more.
+    expect(texts.filter(text => text !== 'sonnet-5-5').length).toBeLessThanOrEqual(rows)
+  }
+})
+
+test('tokens C16: nothing about tokens reaches the store, the trace or a toast', OPTIONS, async ($, on) => {
+  const writes: string[] = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 159 } } : undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push(JSON.stringify([e.key, e.value]))
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(JSON.stringify(e))
+
+      return { value: undefined } as never
+    })
+  }
+  nextFast = true
+  await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+  await finish($, 't1', { input: 7_777, read: 3_242_424, output: 98_765, model: 'claude-segredo-9' })
+  await finish($, 's1', { input: 4_242, output: 31_337 }, { agentId: 'sub1' })
+
+  const trace = ((await $.command.run({ command: 'guild', args: 'trace' } as never)) as { text: string }).text
+  expect(writes.length).toBeGreaterThan(0)
+  expect(toasts.length).toBeGreaterThan(0)
+  expect([...writes, ...toasts, trace].join('\n')).not.toMatch(/7777|7_777|3242424|98765|4242|31337|segredo|tokens|usage|cache|input_tokens/)
+})
+
+test('tokens C17: every demo scene shows made-up tokens', async ($, on) => {
+  nextFast = true
+  await setup($, on)
+
+  const missing: string[] = []
+
+  for (const scene of DEMO_SCENES) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+    // What the session really spent is ignored while a scene runs.
+    await finish($, 'real', { input: 1, output: 2 })
+    await finish($, 'real-sub', { input: 3, output: 4 }, { agentId: 'sub1' })
+
+    const lines = await tokenTexts($)
+    expect(lines.map(item => item.text)).toEqual([
+      'tokens  input 142k · output 18k · cache 87%',
+      'sessão  input 1,2M · output 96k · cache 91%',
+      'subagentes input 30k · output 4,1k · cache 38%',
+    ])
+    expect(lines.map(item => item.color === URGENT_COLOR)).toEqual([false, false, true])
+    if (!(await panelItems($)).some(item => /^sonnet/.test(item.text))) missing.push(scene)
+  }
+  expect(missing).toEqual([])
+
+  // Back to the real session: what happened during the scenes was not counted.
+  await $.command.run({ command: 'guild', args: 'off' } as never)
+  expect(await tokenTexts($)).toEqual([])
 })
