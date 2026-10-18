@@ -84,7 +84,7 @@ Level `n` starts at `40 × (n − 1)²` XP: level 2 at 40, level 3 at 160, level
 
 ## The bug
 
-When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). If no such call comes, the bug leaves on its own after **2 minutes without a new tool error**; a new error restarts that count. Calls refused by a permission or a hook are not failures.
+When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). If no such call comes, the bug leaves on its own after **2 minutes without a new tool error**; a new error restarts that count. Calls refused by a permission or a hook, and the ones **you reject yourself** (a declined plan, a denied permission, an interrupted question), are not failures: they raise no bug, defeat no live bug and pay no XP. In `/guild trace` they show as `RECUSADA`, not `ERRO`.
 
 ## Side panel
 
@@ -114,7 +114,7 @@ It opens by itself from 144 columns (110 once you opened it yourself), unless yo
 |---|---|
 | `/guild panel` | open the side panel and keep opening it |
 | `/guild bar` | close the panel and go back to the bottom band |
-| `/guild trace [N\|clear]` | print the record of the last N tool calls (default 20): who was on screen, who got the XP, and a summary; `clear` erases it. Only tool names, classes and the program name of a shell command are kept, never prompts, paths, arguments or variables |
+| `/guild trace [N\|clear]` | print the record of the last N tool calls (default 20): who was on screen, who got the XP (`ERRO` marks a failure, `RECUSADA` a call you rejected), and a summary; `clear` erases it. Only tool names, classes and the program name of a shell command are kept, never prompts, paths, arguments or variables |
 | `/guild <scene>` | show a demo scene (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` returns to the real session |
 
 ## Requirements
