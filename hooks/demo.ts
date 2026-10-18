@@ -1,7 +1,7 @@
 import type { Settings } from './guild'
 import { DEFAULTS } from './guild'
 import type { Tracker } from './tracker'
-import { createTracker, startTurn, toolFinished, toolStarted } from './tracker'
+import { callStarted, createTracker, startTurn, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
 import { addXp, emptyGuild } from './xp'
 
@@ -37,8 +37,9 @@ const demoGuild = () => {
   return levels.reduce((guild, [cls, xp]) => addXp(guild, cls, xp).guild, emptyGuild())
 }
 
-const working = (tracker: Tracker, now: number, tool: string): Tracker =>
-  toolStarted(startTurn(tracker, { id: 'demo', prompt: '', now }), { tool }, now)
+// A call in progress, so the line at the top of the panel has something to say.
+const working = (tracker: Tracker, now: number, tool: string, target?: string): Tracker =>
+  callStarted(toolStarted(startTurn(tracker, { id: 'demo', prompt: '', now }), { tool }, now), { id: 1, tool, target })
 
 const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: Tracker; usage: Usage } => {
   const base = createTracker(demoGuild(), now)
@@ -53,10 +54,10 @@ const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: T
 
   if (scene === 'explorador') return { tracker: working(base, now, 'WebSearch'), usage }
   if (scene === 'mago') return { tracker: working(base, now, 'TodoWrite'), usage }
-  if (scene === 'guerreiro') return { tracker: working(base, now, 'Edit'), usage }
+  if (scene === 'guerreiro') return { tracker: working(base, now, 'Edit', 'register.tsx'), usage }
 
   if (scene === 'bug') {
-    const edit = working(base, now, 'Edit')
+    const edit = working(base, now, 'Edit', 'register.tsx')
     const failed = toolFinished(edit, { use: { tool: 'Bash', command: 'npm test' }, isError: true, now, durationMs: 0 })
 
     return { tracker: failed.tracker, usage }
