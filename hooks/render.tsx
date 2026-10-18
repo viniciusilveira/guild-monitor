@@ -4,6 +4,7 @@ import type { ViewModel } from '../types'
 import type { TaskClass } from './classify'
 import { counterLine, counterSegments } from './counters'
 import { doingLine } from './doing'
+import { goldTexts } from './gold'
 import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
@@ -128,6 +129,21 @@ const tokenLines = (ui: Elements['terminal'], view: ViewModel, width: number) =>
           </Text>,
         ]
   })
+}
+
+// The panel's lines of the gold by class, an estimate (the "~"): none until the cost has changed, and none when
+// not even the shortest form fits the width.
+const goldLines = (ui: Elements['terminal'], view: ViewModel, width: number) => {
+  const { Text } = ui
+  const texts = view.gold === null ? null : goldTexts(view.gold, width)
+
+  return view.gold === null || texts === null
+    ? []
+    : view.gold.map((line, i) => (
+        <Text key={`gold-${line.cls}`} color={COLORS[line.cls]}>
+          {texts[i]}
+        </Text>
+      ))
 }
 
 // The band above the prompt: the active character, its attributes, the other
@@ -270,6 +286,7 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
         </Box>
       )}
       <Text key="counters" color={METER_COLORS.gold}>{counterLine(counterSegments(view.counters))}</Text>
+      {goldLines(ui, view, columns)}
       <Text key="session-time" dimColor>{`sessão ${seconds(view.sessionSeconds)}`}</Text>
       <Text key="turn-time" dimColor>{`turno ${seconds(view.turnSeconds)}`}</Text>
       {tokenLines(ui, view, columns)}

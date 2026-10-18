@@ -19,7 +19,7 @@ import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import type { TraceEntry } from './trace'
 import { appendTrace, describeTrace, parseTrace, programOf } from './trace'
-import { callEnded, callStarted, completeTurn, createTracker, setPlanMode, startTurn, tick, tokensSpent, toolFinished, toolStarted } from './tracker'
+import { callEnded, callStarted, completeTurn, costMeasured, createTracker, setPlanMode, startTurn, tick, tokensSpent, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
 import { buildView, frameAt, mergeUsage, NAMES, sheetIdFor, usageFrom } from './view'
 import { emptyGuild, parseGuild } from './xp'
@@ -218,6 +218,7 @@ export const register: Register = (on, options) => {
           nextUsageAt = now + USAGE_EVERY_MS
           const fresh = usageFrom(await $.session.usage())
           usage = mergeUsage(usage, fresh)
+          tracker = costMeasured(tracker, fresh.costUsd)
           record(fresh, now)
         }
 
@@ -393,6 +394,7 @@ export const register: Register = (on, options) => {
   on('session.measure', async ($, e, next) => {
     const now = await $.clock.now()
     usage = mergeUsage(usage, usageFrom(e))
+    tracker = costMeasured(tracker, usageFrom(e).costUsd)
     record(usageFrom(e), now)
     await publishView($, viewOf(tracker, usage, now), cache)
 
