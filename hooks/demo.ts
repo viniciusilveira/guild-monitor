@@ -26,6 +26,10 @@ export const choiceOf = (args: string): SceneChoice => {
 }
 
 const MINUTE_MS = 60_000
+// The demo's clocks: a session open for 1h05, a turn running for 32 s, and a last turn that took 4 min.
+const DEMO_SESSION_MS = 65 * MINUTE_MS
+const DEMO_TURN_MS = 32_000
+const DEMO_LAST_TURN_MS = 4 * MINUTE_MS
 
 const demoGuild = () => {
   const levels = [
@@ -39,7 +43,7 @@ const demoGuild = () => {
 
 // A call in progress, so the line at the top of the panel has something to say.
 const working = (tracker: Tracker, now: number, tool: string, target?: string): Tracker =>
-  callStarted(toolStarted(startTurn(tracker, { id: 'demo', prompt: '', now }), { tool }, now), { id: 1, tool, target })
+  callStarted(toolStarted(startTurn(tracker, { id: 'demo', prompt: '', now: now - DEMO_TURN_MS }), { tool }, now), { id: 1, tool, target })
 
 const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: Tracker; usage: Usage } => {
   const base = createTracker(demoGuild(), now)
@@ -50,6 +54,7 @@ const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: T
       { kind: 'five_hour', percentUsed: 55, resetsAt: new Date(now + 133 * MINUTE_MS).toISOString() },
     ],
     costUsd: 3.42,
+    startedAt: now - DEMO_SESSION_MS,
   }
 
   if (scene === 'explorador') return { tracker: working(base, now, 'WebSearch'), usage }
@@ -63,7 +68,7 @@ const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: T
     return { tracker: failed.tracker, usage }
   }
 
-  const resting: Tracker = { ...base, active: 'guerreiro' }
+  const resting: Tracker = { ...base, active: 'guerreiro', lastTurnMs: DEMO_LAST_TURN_MS }
 
   if (scene === 'cansado') return { tracker: resting, usage }
 

@@ -7,7 +7,7 @@ import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
 import { STATS_COLUMNS } from './sidebar'
-import { agoText, bar, COLORS, costText, healthColor, METER_COLORS, NAMES, percentText, restText, untilReset } from './view'
+import { agoText, bar, COLORS, costText, durationText, healthColor, METER_COLORS, NAMES, percentText, restText, untilReset } from './view'
 
 // The cells of one Raster, given its key, who it draws and at what size. The
 // caller keeps track of what it handed out, to animate it later.
@@ -34,9 +34,12 @@ const doingText = (ui: Elements['terminal'], view: ViewModel, active: Char, colu
   )
 }
 
+// A length of time the view carries in whole seconds, or `--` while it is unknown.
+const seconds = (value: number | null): string => (value === null ? '--' : durationText(value * 1000))
+
 // The lines of the active character's stats, each in the color of its meter. What the character does (or
 // that it rests, is tired or sleeps) is the line above them, so the stats do not repeat it.
-const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number) => {
+const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number, turnTimer = false) => {
   const { Text } = ui
   const xpPercent = active.xpNeeded > 0 ? Math.round((active.xpInLevel / active.xpNeeded) * 100) : 0
   const reset = untilReset(view.manaResetsAt, now)
@@ -54,7 +57,7 @@ const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now:
       {`ST ${bar(view.stamina)} ${percentText(view.stamina)}`}
     </Text>,
     <Text key="gold" color={view.costUsd === null ? METER_COLORS.unknown : METER_COLORS.gold}>
-      {`ouro ${costText(view.costUsd)}`}
+      {`ouro ${costText(view.costUsd)}${turnTimer && view.working && view.turnSeconds !== null ? ` · turno ${seconds(view.turnSeconds)}` : ''}`}
     </Text>,
   ]
 }
@@ -81,7 +84,7 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
       {layout.info && (
         <Box flexDirection="column" width={INFO_COLUMNS} alignSelf="flex-start">
           {doingText(ui, view, active, INFO_COLUMNS)}
-          {statLines(ui, view, active, now)}
+          {statLines(ui, view, active, now, true)}
           {layout.bugBelow ? (
             <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
           ) : view.bug !== 'none' && !layout.bug ? (
@@ -190,6 +193,8 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
           ))}
         </Box>
       )}
+      <Text key="session-time" dimColor>{`sessão ${seconds(view.sessionSeconds)}`}</Text>
+      <Text key="turn-time" dimColor>{`turno ${seconds(view.turnSeconds)}`}</Text>
       <Text dimColor>Últimas operações</Text>
       {history.length === 0 && <Text dimColor>nenhuma ainda</Text>}
       {history.map((entry, i) => (
