@@ -67,6 +67,16 @@ The character on stage is the one most of the **last three tool calls** belong t
 
 HP and MP come from your subscription's rate limits: outside a subscription (for instance with an API key) they show `--`. A figure the session has not reported yet keeps its last known value, so the meters never blank when you switch characters.
 
+## Forecast of the windows
+
+Next to HP and MP the guild says when each window runs out **at the current pace**, in Portuguese like the rest of the interface: `5h esgota em ~40min`, `7d esgota em ~3 dias`, `5h dura até o reset` (it lasts until the window resets) or `7d sem consumo` (nothing is being used). It is red when the window runs out before it resets.
+
+- It is estimated from the readings of the rate limits the plugin already takes, with the average slope of the recent ones (the last hour for the 5-hour window, the last two days for the week). The percent moves in whole points, so it only says something with at least 3 readings, over 10 minutes (2 hours for the week) and a variation of 2 points. Before that nothing is shown: **the forecast never invents a number**. The time is rounded up in steps of 5 minutes; the week shows days.
+- When a window resets (a new reset time, or the percent drops) the readings start over, and the forecast comes back once there are enough new ones. A window the session stops reporting stops being forecast.
+- In the side panel each window has its own line under the legend. In the bottom band there is room for one: the window that runs out before its reset, otherwise the 5-hour one. In the compact band (8 rows) it takes the line of the legend and gives way to the `bug na área!` warning. In a narrow panel the text loses the `em` (`5h esgota ~40min`) and, if even that does not fit, the line is left out.
+- Only the recent readings exist, in memory: nothing is saved to the store, to the `/guild trace` log or shown in a toast. The option `showForecast` set to `off` hides it all.
+- The demo scenes show a made-up forecast: `5h esgota em ~1h30` in red and `7d dura até o reset`.
+
 ## XP and levels
 
 Every tool call that finishes **without error** pays XP at once to the class it belongs to, so a task that explores, plans and then executes feeds all three characters:
@@ -190,6 +200,7 @@ Restart Claude Code and the guild appears above the prompt.
 | `bandSize` | `full` | `full`: active character full size (16 rows); `compact`: everyone reduced (8 rows) |
 | `layout` | `auto` | `auto`: side panel where it fits, bottom band otherwise; `bar`: only the band; `panel`: only the panel |
 | `demo` | `off` | a fixed scene with made-up figures: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo` |
+| `showForecast` | `on` | `on`: shows when the 5-hour and 7-day windows run out at the current pace; `off`: hides the forecast |
 
 Set them on install (`claude plugin install … --config bandSize=compact`), with `claude plugin configure guild-monitor`, or in `/plugin`.
 
@@ -197,7 +208,7 @@ The band adapts to the terminal: first the active character, then the stats besi
 
 ### Demo mode
 
-`demo` shows invented numbers (HP 72%, MP 45% with 2h13 to reset, ST 64%, $3.42, a level-4 Warrior) in a fixed scene and **ignores the real session and saves nothing**. Handy for screenshots and for a first look. Leave it at `off` for real use.
+`demo` shows invented numbers (HP 72%, MP 45% with 2h13 to reset, ST 64%, $3.42, a level-4 Warrior, and a forecast: the 5-hour window running out in `~1h30`) in a fixed scene and **ignores the real session and saves nothing**. Handy for screenshots and for a first look. Leave it at `off` for real use.
 
 You do not need to restart to change scenes: type `/guild bug` (or any other scene) and the band switches at once; `/guild off` goes back to the real session. The command changes the scene for the current session only.
 
@@ -236,7 +247,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 
