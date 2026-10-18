@@ -38,7 +38,10 @@
         "guerreiro",
         "bug",
         "cansado",
-        "dormindo"
+        "dormindo",
+        "esquema-padrao",
+        "esquema-contraste",
+        "esquema-daltonico"
       ]
     },
     "layout": {
@@ -50,6 +53,17 @@
         "auto",
         "bar",
         "panel"
+      ]
+    },
+    "meters": {
+      "type": "string",
+      "title": "Esquema de cores dos medidores",
+      "description": "padrao: as cores de sempre; contraste: alto contraste; daltonico: não depende de verde contra vermelho (paleta Okabe-Ito). A escolha salva com /guild meters NOME vale mais que esta opção",
+      "default": "padrao",
+      "options": [
+        "padrao",
+        "contraste",
+        "daltonico"
       ]
     },
     "showForecast": {

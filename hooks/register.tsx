@@ -5,7 +5,8 @@ import type { ViewModel } from '../types'
 import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
 import { targetOf } from './doing'
-import { choiceOf, demoState, SCENES, sceneOf } from './demo'
+import { chooseFrom, describeChoices, helpText, mergeSaved, requestOf, savedChoice, savedText } from './choices'
+import { choiceOf, demoState, SCENES, SCHEME_SCENES, sceneOf, schemeOfScene } from './demo'
 import type { History } from './forecast'
 import { EMPTY_HISTORY, recordReadings } from './forecast'
 import type { Settings } from './guild'
@@ -15,6 +16,8 @@ import { chooseLayout } from './layout'
 import { chooseSidebarLayout } from './sidebar'
 import { encodeFrame } from './raster'
 import { bandTree, sidebarTree } from './render'
+import type { MeterScheme } from './schemes'
+import { METER_CHOICES, SCHEMES } from './schemes'
 import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import type { TraceEntry } from './trace'
@@ -32,11 +35,13 @@ const USAGE_EVERY_MS = 2_000
 const viewAtom = atom({ plugin: 'guild-monitor', key: 'view' } as const, null)
 // Whether the side panel is up, so the band yields to it.
 const panelAtom = atom({ plugin: 'guild-monitor', key: 'panel' } as const, false)
+// The color scheme of the meters: what is read from it is the name, and a change of it draws the screen again.
+const metersAtom = atom({ plugin: 'guild-monitor', key: 'meters' } as const, '')
 
 const PANEL_ID = 'guild'
 // Wide enough for the full character with its stats beside it (see `STATS_COLUMNS`).
 const PANEL_COLUMNS = 62
-// What the person chose about the panel, kept between sessions.
+// What the person chose about the interface (the panel, the meters' scheme), kept between sessions: preferences only.
 const UI_KEY = 'guild.ui.v1'
 // The record of who was on screen at each step, kept to investigate the choice of character later.
 const TRACE_KEY = 'guild.trace.v1'
@@ -121,6 +126,11 @@ const applyGain = async ($: Pick<CoreEngineInterface, 'store' | 'ui'>, tracker: 
 
 type PanelDollar = Pick<CoreEngineInterface, 'store' | 'ui' | 'state'>
 
+// One preference saved, the others kept.
+const saveUi = async ($: Pick<CoreEngineInterface, 'store'>, field: string, value: unknown): Promise<void> => {
+  await $.store.set(UI_KEY, mergeSaved(await $.store.get(UI_KEY), field, value))
+}
+
 // Opens the pane, which the engine seats beside the transcript when there is room and
 // otherwise leaves undrawn. `remember` keeps it open for the next sessions: a command
 // of the person's does, the opening at the start does not.
@@ -129,7 +139,7 @@ const showPanel = async ($: PanelDollar, remember: boolean): Promise<{ isPlaced:
   const isPlaced = opened.isPlaced === true
 
   await update($, panelAtom, () => isPlaced)
-  if (isPlaced && remember) await $.store.set(UI_KEY, { panel: true })
+  if (isPlaced && remember) await saveUi($, 'panel', true)
 
   return { isPlaced, reason: 'reason' in opened ? String(opened.reason) : undefined }
 }
@@ -140,7 +150,7 @@ const saveTrace = async ($: Pick<CoreEngineInterface, 'store'>, trace: readonly 
 
 const hidePanel = async ($: PanelDollar): Promise<void> => {
   await update($, panelAtom, () => false)
-  await $.store.set(UI_KEY, { panel: false })
+  await saveUi($, 'panel', false)
 }
 
 export const register: Register = (on, options) => {
@@ -154,6 +164,10 @@ export const register: Register = (on, options) => {
   const layoutMode = options.layout === 'bar' || options.layout === 'panel' ? options.layout : 'auto'
   // A demo scene shows made-up figures and ignores the session.
   let scene = sceneOf(options.demo)
+  // The meters' scheme: the choice saved by `/guild meters` wins over the option; with neither, `padrao`.
+  let meters: MeterScheme = chooseFrom(METER_CHOICES, [options.meters])
+  // A scheme scene forces its scheme while it runs, and saves nothing.
+  const colorsNow = () => SCHEMES[(scene === undefined ? undefined : schemeOfScene(scene)) ?? meters]
 
   let tracker: Tracker = createTracker(emptyGuild(), 0)
   let usage: Usage = { rateLimits: [] }
@@ -185,8 +199,8 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'guild',
-      description: 'Abre ou fecha o painel lateral da guilda e mostra cenas de demonstração',
-      argumentHint: `[panel|bar|trace|${SCENES.join('|')}|off]`,
+      description: 'Abre ou fecha o painel lateral da guilda, troca o esquema de cores dos medidores e mostra cenas de demonstração',
+      argumentHint: `[panel|bar|trace|meters [${METER_CHOICES.names.join('|')}]|${[...SCENES, ...SCHEME_SCENES].join('|')}|off]`,
     })
     const startedAt = await $.clock.now()
     tracker = createTracker(parseGuild(await $.store.get(STORE_KEY)), startedAt)
@@ -200,6 +214,8 @@ export const register: Register = (on, options) => {
 
     // The panel opens by itself where there is room (the engine decides), unless the person closed it.
     const kept = await $.store.get(UI_KEY)
+    meters = chooseFrom(METER_CHOICES, [savedChoice(METER_CHOICES, kept), options.meters])
+    await update($, metersAtom, () => meters)
     const wantsPanel = layoutMode === 'panel' || (layoutMode === 'auto' && !isClosedByPerson(kept))
     if (wantsPanel) await showPanel($, false)
 
@@ -282,9 +298,22 @@ export const register: Register = (on, options) => {
       return { text: 'Painel fechado: a barra inferior voltou' }
     }
 
+    if (word === 'meters' || word.startsWith('meters ')) {
+      const request = requestOf(METER_CHOICES, word.slice('meters'.length))
+
+      if (request.kind === 'list') return { text: describeChoices(METER_CHOICES, meters) }
+      if (request.kind === 'invalid') return { text: helpText(METER_CHOICES, request.typed) }
+
+      meters = request.name
+      await saveUi($, METER_CHOICES.field, meters)
+      await update($, metersAtom, () => meters)
+
+      return { text: savedText(METER_CHOICES, meters) }
+    }
+
     const choice = choiceOf(e.args)
 
-    if (choice.kind === 'unknown') return { text: `Use /guild panel | bar | trace [N|clear] | ${SCENES.join(' | ')} | off` }
+    if (choice.kind === 'unknown') return { text: `Use /guild panel | bar | trace [N|clear] | meters [${METER_CHOICES.names.join('|')}] | ${[...SCENES, ...SCHEME_SCENES].join(' | ')} | off` }
 
     scene = choice.kind === 'scene' ? choice.scene : undefined
 
@@ -422,8 +451,9 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANEL_ID }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
 
-    // Reading the atom draws the panel again when the view changes.
+    // Reading the atoms draws the panel again when the view or the meters' scheme changes.
     const published = await read($, viewAtom)
+    await read($, metersAtom)
     const now = await $.clock.now()
     const state = stateAt(now)
     const view = isReady ? viewOf(state.tracker, state.usage, now, state.history) : published
@@ -439,6 +469,7 @@ export const register: Register = (on, options) => {
       columns: e.props.bodyColumns,
       layout,
       now,
+      colors: colorsNow(),
       cellsFor: (key, who, size) => {
         const spec = specFor(who, view, state.tracker, now)
         mounted.set(key, { who, size, sheetId: spec.sheetId, frame: spec.frame })
@@ -466,6 +497,7 @@ export const register: Register = (on, options) => {
     // Reading the atom is what draws the band again when it changes; what is drawn is the view
     // of this very moment, so the character, its XP and the figures always agree.
     const published = await read($, viewAtom)
+    await read($, metersAtom)
     const now = await $.clock.now()
     const state = stateAt(now)
     const view = isReady ? viewOf(state.tracker, state.usage, now, state.history) : published
@@ -481,6 +513,7 @@ export const register: Register = (on, options) => {
       view,
       layout,
       now,
+      colors: colorsNow(),
       cellsFor: (key, who, size) => {
         const spec = specFor(who, view, state.tracker, now)
         mounted.set(key, { who, size, sheetId: spec.sheetId, frame: spec.frame })

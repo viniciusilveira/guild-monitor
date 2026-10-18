@@ -9,6 +9,7 @@ import type { Tracker } from './tracker'
 import { callStarted, createTracker, startTurn, toolFinished, toolStarted } from './tracker'
 import type { History } from './forecast'
 import { addSample, EMPTY_HISTORY } from './forecast'
+import type { MeterScheme } from './schemes'
 import type { Usage } from './view'
 import { addXp, emptyGuild } from './xp'
 
@@ -16,9 +17,22 @@ import { addXp, emptyGuild } from './xp'
 // the session and nothing saved.
 export const SCENES = ['explorador', 'mago', 'guerreiro', 'bug', 'cansado', 'dormindo'] as const
 
-export type Scene = (typeof SCENES)[number]
+// One scene per color scheme of the meters, for screenshots: the warrior at work, the scheme forced while the scene
+// runs, and the HP walking through its three levels (see `HP_STEPS`).
+export const SCHEME_SCENES = ['esquema-padrao', 'esquema-contraste', 'esquema-daltonico'] as const
 
-export const sceneOf = (value: unknown): Scene | undefined => SCENES.find(scene => scene === value)
+export type Scene = (typeof SCENES)[number] | (typeof SCHEME_SCENES)[number]
+
+const SCHEME_OF: Record<(typeof SCHEME_SCENES)[number], MeterScheme> = { 'esquema-padrao': 'padrao', 'esquema-contraste': 'contraste', 'esquema-daltonico': 'daltonico' }
+
+export const sceneOf = (value: unknown): Scene | undefined => [...SCENES, ...SCHEME_SCENES].find(scene => scene === value)
+
+// The scheme a scene forces on the screen, or nothing for the scenes of the figures.
+export const schemeOfScene = (scene: Scene): MeterScheme | undefined => (scene in SCHEME_OF ? SCHEME_OF[scene as keyof typeof SCHEME_OF] : undefined)
+
+// The percent of the week used in each step of a scheme scene, which makes HP 72, 38 and 15: one level of each color.
+const HP_STEPS = [28, 62, 85] as const
+const HP_STEP_MS = 3_000
 
 export type SceneChoice = { kind: 'scene'; scene: Scene } | { kind: 'off' } | { kind: 'unknown' }
 
@@ -103,10 +117,12 @@ const demoReadings = (now: number, usage: Usage): History => {
 
 const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: Tracker; usage: Usage } => {
   const base = createTracker(demoGuild(), now)
+  const isSchemeScene = schemeOfScene(scene) !== undefined
+  const weekUsed = isSchemeScene ? (HP_STEPS[Math.floor(now / HP_STEP_MS) % HP_STEPS.length] ?? 28) : 28
   const usage: Usage = {
     contextPercent: scene === 'cansado' ? 88 : 36,
     rateLimits: [
-      { kind: 'seven_day', percentUsed: 28, resetsAt: new Date(now + 2 * 24 * 60 * MINUTE_MS).toISOString() },
+      { kind: 'seven_day', percentUsed: weekUsed, resetsAt: new Date(now + 2 * 24 * 60 * MINUTE_MS).toISOString() },
       { kind: 'five_hour', percentUsed: 55, resetsAt: new Date(now + 133 * MINUTE_MS).toISOString() },
     ],
     costUsd: DEMO_COST_USD,
@@ -115,7 +131,7 @@ const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: T
 
   if (scene === 'explorador') return { tracker: working(base, now, 'WebSearch'), usage }
   if (scene === 'mago') return { tracker: working(base, now, 'TodoWrite'), usage }
-  if (scene === 'guerreiro') return { tracker: working(base, now, 'Edit', 'register.tsx'), usage }
+  if (scene === 'guerreiro' || isSchemeScene) return { tracker: working(base, now, 'Edit', 'register.tsx'), usage }
 
   if (scene === 'bug') {
     const edit = working(base, now, 'Edit', 'register.tsx')

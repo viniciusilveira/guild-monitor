@@ -3,7 +3,8 @@ import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { SCENES as DEMO_SCENES } from './demo'
-import { URGENT_COLOR } from './view'
+import { METER_SCHEMES, SCHEMES } from './schemes'
+import { COLORS, URGENT_COLOR } from './view'
 
 const START = 1_000_000
 const MINUTE = 60_000
@@ -56,6 +57,9 @@ let limits: unknown[] = []
 // The cost `session.usage` reports: a test sets `nextCost` before `setup` and `cost` while the clock runs.
 let nextCost: unknown = 1.5
 let cost: unknown = 1.5
+// The context percent `session.usage` reports (the stamina): a test sets `nextContext` before `setup`; `undefined` leaves it unknown.
+let nextContext: number | undefined = 30
+let contextPercent: number | undefined = 30
 // A test that holds the answer of `session.usage`: set `usageGate`, wait for `usageHeld`, then release it.
 let usageGate: Promise<void> | undefined
 let usageHeld = false
@@ -80,6 +84,8 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   nextLimits = []
   cost = nextCost
   nextCost = 1.5
+  contextPercent = nextContext
+  nextContext = 30
   usageGate = undefined
   usageHeld = false
   isFast = nextFast
@@ -99,7 +105,7 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
       await usageGate
     }
 
-    return { value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: limits, cost: { usd: cost } } } as never
+    return { value: { startedAt: sessionStart, context: { percent: contextPercent }, rateLimits: limits, cost: { usd: cost } } } as never
   })
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
@@ -1849,4 +1855,317 @@ test('gold C32: an operation that finishes while the cost is being read weighs o
   // The read weighs on the next interval.
   await measureCost($, 3.5)
   expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (50%)', 'Explorador ~$1.00 (50%)'])
+})
+
+// Color schemes of the meters (issue 12). The preferences live under `guild.ui.v1`; the test keeps what the store holds
+// and every write to it, so a second session can start from the same store.
+const UI_KEY = 'guild.ui.v1'
+
+const preferences = (initial?: Record<string, unknown>) => {
+  const held: Record<string, unknown> = { 'guild.v1': { guerreiro: { xp: 200 } } }
+  if (initial !== undefined) held[UI_KEY] = structuredClone(initial)
+  const uiWrites: unknown[] = []
+  const store = (on: On) => {
+    // The panel the person opens and closes with `/guild panel` and `/guild bar`.
+    on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
+    on('ui.close', async () => ({ value: undefined }) as never)
+    on('store.get', async (_$, e) => ({ value: held[e.key] === undefined ? undefined : structuredClone(held[e.key]) }) as never)
+    on('store.set', async (_$, e) => {
+      held[e.key] = structuredClone(e.value)
+      if (e.key === UI_KEY) uiWrites.push(structuredClone(e.value))
+
+      return { value: undefined } as never
+    })
+  }
+
+  return { held, uiWrites, store }
+}
+
+type Preferences = ReturnType<typeof preferences>
+
+// HP 72% (the week 28% used), MP 45% and ST 70%.
+const WITH_FIGURES = () => {
+  nextLimits = [five(55, 133), seven(28)]
+}
+
+const startWith = async ($: Engine, on: On, prefs: Preferences) => setup($, on, () => false, () => undefined, prefs.store)
+
+const meters = (args: string) => ({ command: 'guild', args: `meters${args}` }) as never
+
+const reply = async ($: Engine, args: string) => ((await $.command.run(meters(args))) as { text: string }).text
+
+const colorOf = (items: Item[], start: string | RegExp) =>
+  items.find(item => (typeof start === 'string' ? item.text.startsWith(start) : start.test(item.text)))?.color
+
+const restart = async ($: Engine) => {
+  await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
+}
+
+test('meters C2: the default scheme paints the screen with today\'s colors', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  await startWith($, on, preferences())
+  await $.command.run({ command: 'guild', args: 'bug' } as never)
+
+  const panel = await panelItems($)
+  expect(colorOf(panel, 'HP ')).toBe('#2ECC71')
+  expect(colorOf(panel, 'MP ')).toBe('#4A90E2')
+  expect(colorOf(panel, 'ST ')).toBe('#F39C12')
+  expect(colorOf(panel, 'XP ')).toBe('#9B59B6')
+  expect(colorOf(panel, 'ouro ')).toBe('#F1C40F')
+  expect(colorOf(panel, /bugs \d+$/)).toBe('#F1C40F')
+  expect(colorOf(panel, /^5h esgota/)).toBe('#E74C3C')
+  expect(colorOf(panel, /^tokens /)).toBe('#5DADE2')
+  expect(colorOf(panel, /^subagentes /)).toBe('#E74C3C')
+
+  // The label beside a reduced band, and the warning under the stats of a narrow one.
+  expect(colorOf(await bandItems($, 120, 8), 'Bug')).toBe('red')
+  expect(colorOf(await bandItems($, 60, 8), 'bug na área!')).toBe('red')
+})
+
+test('meters C6: a meter without a value uses the unknown gray of the scheme', { options: { layout: 'bar' } }, async ($, on) => {
+  nextContext = undefined
+  nextCost = null
+  await startWith($, on, preferences())
+
+  for (const scheme of METER_SCHEMES) {
+    await reply($, ` ${scheme}`)
+    const panel = await panelItems($)
+    const band = await bandItems($)
+
+    for (const items of [panel, band]) {
+      for (const start of ['HP ', 'MP ', 'ST ', 'ouro ']) {
+        const line = items.find(item => item.text.startsWith(start))
+
+        expect(`${scheme} ${start} ${line?.text.endsWith('--')}`).toBe(`${scheme} ${start} true`)
+        expect(`${scheme} ${start} ${line?.color}`).toBe(`${scheme} ${start} ${SCHEMES[scheme].unknown}`)
+      }
+    }
+  }
+  expect(SCHEMES.padrao.unknown).toBe('#7F8C8D')
+})
+
+test('meters C8: the screen uses only colors of the scheme and of the classes', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  await startWith($, on, preferences())
+  const classes = Object.values(COLORS)
+
+  for (const scheme of METER_SCHEMES) {
+    await reply($, ` ${scheme}`)
+    const allowed = new Set<unknown>([...Object.values(SCHEMES[scheme]), ...classes])
+
+    for (const scene of ['bug', 'explorador']) {
+      await $.command.run({ command: 'guild', args: scene } as never)
+      const seen = [...(await panelItems($)), ...(await bandItems($, 120, 20)), ...(await bandItems($, 120, 8)), ...(await bandItems($, 60, 8))]
+      const colors = new Set(seen.map(item => item.color).filter(color => color !== undefined))
+
+      expect([...colors].filter(color => !allowed.has(color))).toEqual([])
+      // Every color of the map is in use somewhere on these screens (the bug scene has the red lines), but the
+      // unknown gray, which only shows without a figure (see C6), and the two lower levels of HP (see C22).
+      if (scene === 'bug') {
+        const { unknown: _unknown, hpMid: _mid, hpLow: _low, ...inUse } = SCHEMES[scheme]
+        expect(Object.values(inUse).filter(color => !colors.has(color))).toEqual([])
+      }
+    }
+  }
+})
+
+test('meters C10: the command switches the band and the panel at once', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  await startWith($, on, preferences())
+  expect(SCHEMES.contraste.hpHigh).not.toBe(SCHEMES.padrao.hpHigh)
+
+  const band = await mountBand($)
+  const live = async () => (await itemsOf(band)).find(item => item.text.startsWith('HP '))?.color
+  expect(await live()).toBe(SCHEMES.padrao.hpHigh)
+
+  expect(await reply($, ' contraste')).toBe('Esquema dos medidores: contraste (salvo)')
+
+  // The band that was already on screen follows, and so does a panel opened afterwards.
+  expect(await live()).toBe(SCHEMES.contraste.hpHigh)
+  await band.unmount()
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+  expect(colorOf(await bandItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+
+  expect(await reply($, ' daltonico')).toBe('Esquema dos medidores: daltonico (salvo)')
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+})
+
+test('meters C11: the choice holds in the next session', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences()
+  await startWith($, on, prefs)
+  await reply($, ' daltonico')
+  expect(prefs.held[UI_KEY]).toEqual({ meters: 'daltonico' })
+
+  // A new session reads the store again: nothing else carries the choice over.
+  WITH_FIGURES()
+  await restart($)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+  expect(colorOf(await bandItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+})
+
+test('meters C12: saved beats the option and the option beats the default', { options: { layout: 'bar', meters: 'daltonico' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences({ meters: 'contraste' })
+  await startWith($, on, prefs)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+
+  // Nothing saved: the option applies.
+  delete prefs.held[UI_KEY]
+  await restart($)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+
+  // The saved choice comes back and wins again.
+  prefs.held[UI_KEY] = { panel: true, meters: 'padrao' }
+  await restart($)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.padrao.hpHigh)
+})
+
+test('meters C12: an option that is not a scheme falls to the default', { options: { layout: 'bar', meters: 'rosa' } }, async ($, on) => {
+  WITH_FIGURES()
+  await startWith($, on, preferences())
+
+  expect(colorOf(await panelItems($), 'HP ')).toBe('#2ECC71')
+})
+
+test('meters C13: without a name the command lists the schemes', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences()
+  await startWith($, on, prefs)
+
+  expect(await reply($, '')).toBe('Esquemas dos medidores:\n- padrao (atual)\n- contraste\n- daltonico\nTroque com /guild meters NOME')
+
+  await reply($, ' contraste')
+  prefs.uiWrites.length = 0
+  expect(await reply($, '')).toBe('Esquemas dos medidores:\n- padrao\n- contraste (atual)\n- daltonico\nTroque com /guild meters NOME')
+  expect(await reply($, '   ')).toContain('- contraste (atual)')
+
+  // Listing neither saves nor changes anything.
+  expect(prefs.uiWrites).toEqual([])
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+})
+
+test('meters C14: an unknown name changes nothing', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences()
+  await startWith($, on, prefs)
+  await reply($, ' contraste')
+  prefs.uiWrites.length = 0
+
+  expect(await reply($, ' rosa')).toBe('Esquema "rosa" não existe. Use: /guild meters padrao | contraste | daltonico')
+  expect(await reply($, ' contraste daltonico')).toBe('Esquema "contraste daltonico" não existe. Use: /guild meters padrao | contraste | daltonico')
+  expect(prefs.uiWrites).toEqual([])
+  expect(prefs.held[UI_KEY]).toEqual({ meters: 'contraste' })
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+})
+
+test('meters C15: the name ignores case and spaces', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences()
+  await startWith($, on, prefs)
+
+  expect(((await $.command.run({ command: 'guild', args: '  meters   DaltoNico ' } as never)) as { text: string }).text).toBe('Esquema dos medidores: daltonico (salvo)')
+  expect(prefs.held[UI_KEY]).toEqual({ meters: 'daltonico' })
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+
+  // The same choice again is the same state.
+  await reply($, ' daltonico')
+  expect(prefs.held[UI_KEY]).toEqual({ meters: 'daltonico' })
+})
+
+test('meters C16: the saved preferences hold the panel and the scheme and no session data', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences()
+  await startWith($, on, prefs)
+  await $.turn.start({ text: 'conserte o teste com a senha hunter2', turnId: 't1' } as never)
+  await call($, 'Edit', { file_path: '/Users/me/segredo.ts', old_string: 'a', new_string: 'b' })
+
+  await reply($, ' contraste')
+  expect(prefs.held[UI_KEY]).toEqual({ meters: 'contraste' })
+
+  // Opening the panel keeps the scheme, and so does closing it.
+  await $.command.run({ command: 'guild', args: 'panel' } as never)
+  expect(prefs.held[UI_KEY]).toEqual({ panel: true, meters: 'contraste' })
+  await $.command.run({ command: 'guild', args: 'bar' } as never)
+  expect(prefs.held[UI_KEY]).toEqual({ panel: false, meters: 'contraste' })
+
+  // Changing the scheme keeps the panel's state.
+  await reply($, ' daltonico')
+  expect(prefs.held[UI_KEY]).toEqual({ panel: false, meters: 'daltonico' })
+
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 777 } as never)
+  const text = JSON.stringify(prefs.uiWrites)
+  expect(text).not.toMatch(/hunter2|segredo|conserte|Edit|777|xp|guerreiro|1\.5|cost/)
+  for (const written of prefs.uiWrites) {
+    expect(Object.keys(written as Record<string, unknown>).filter(key => key !== 'panel' && key !== 'meters')).toEqual([])
+  }
+})
+
+test('meters C17: a saved value that is not a scheme is ignored', { options: { layout: 'bar', meters: 'contraste' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences({ meters: 'rosa', panel: true })
+  await startWith($, on, prefs)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+
+  for (const junk of [42, null, ['daltonico'], { meters: 'daltonico' }, 'DALTONICO']) {
+    prefs.held[UI_KEY] = { meters: junk }
+    await restart($)
+    expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+  }
+
+  prefs.held[UI_KEY] = 'daltonico'
+  await restart($)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+})
+
+test('meters C20: the command picks each scheme scene', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  await startWith($, on, preferences())
+
+  for (const scheme of METER_SCHEMES) {
+    expect(((await $.command.run({ command: 'guild', args: `esquema-${scheme}` } as never)) as { text: string }).text).toBe(`Cena: esquema-${scheme}`)
+    expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES[scheme].hpHigh)
+  }
+})
+
+test('meters C21: a scheme scene forces its scheme and saves nothing', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences({ meters: 'daltonico' })
+  await startWith($, on, prefs)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+
+  await $.command.run({ command: 'guild', args: 'esquema-contraste' } as never)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+  expect(colorOf(await bandItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+  // The saved choice is not the scene's, and the list still says so.
+  expect(await reply($, '')).toContain('- daltonico (atual)')
+  expect(prefs.uiWrites).toEqual([])
+  expect(prefs.held[UI_KEY]).toEqual({ meters: 'daltonico' })
+
+  await $.command.run({ command: 'guild', args: 'off' } as never)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+  expect(colorOf(await bandItems($), 'HP ')).toBe(SCHEMES.daltonico.hpHigh)
+})
+
+test('meters C22: a scheme scene walks the three levels of HP', { options: { layout: 'bar' } }, async ($, on) => {
+  const clock = await startWith($, on, preferences())
+  const hp = async () => {
+    const item = (await panelItems($)).find(entry => entry.text.startsWith('HP '))
+
+    return `${/(\d+)%$/.exec(item?.text ?? '')?.[1]} ${String(item?.color)}`
+  }
+
+  for (const scheme of METER_SCHEMES) {
+    await $.command.run({ command: 'guild', args: `esquema-${scheme}` } as never)
+    const colors = SCHEMES[scheme]
+    const seen: string[] = []
+
+    for (let step = 0; step < 3; step += 1) {
+      seen.push(await hp())
+      await clock.advance(3_000)
+    }
+    // Whatever level the clock starts at, the three come in turn, in a cycle of 9 seconds.
+    expect([...seen].sort()).toEqual([`15 ${colors.hpLow}`, `38 ${colors.hpMid}`, `72 ${colors.hpHigh}`].sort())
+    expect(await hp()).toBe(seen[0])
+  }
 })
