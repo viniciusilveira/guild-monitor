@@ -1752,3 +1752,14 @@ test('gold C25: every demo scene shows the made-up split in the panel', OPTIONS,
     expect(await goldTexts($, 20)).toEqual(['Mag ~$1,20 35%', 'Gue ~$1,71 50%', 'Exp ~$0,51 15%'])
   }
 })
+
+test('gold C13b: a call a hook denied is not an operation of the interval', OPTIONS, async ($, on) => {
+  await fast($, on)
+  refused.add('Edit')
+  await call($, 'Read', { file_path: '/x/a.ts' })
+  await call($, 'Edit', EDIT)
+  await measureCost($, 2.5)
+
+  // Only the explorer's read ran: the denied edit would have taken half of the $1.00.
+  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$0,00 (0%)', 'Explorador ~$1,00 (100%)'])
+})
