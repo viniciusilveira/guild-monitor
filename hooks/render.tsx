@@ -5,6 +5,7 @@ import type { TaskClass } from './classify'
 import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
+import { STATS_COLUMNS } from './sidebar'
 import { agoText, bar, COLORS, costText, healthColor, METER_COLORS, NAMES, percentText, stateText, untilReset } from './view'
 
 // The cells of one Raster, given its key, who it draws and at what size. The
@@ -127,15 +128,22 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
   return (
     <Box flexDirection="column">
       <Button key="collapse" label="recolher" hotkey="r" dimColor onPress={onCollapse} />
-      {layout.active !== null && (
-        <Raster
-          key={`char:${active.cls}`}
-          columns={CELLS[layout.active].columns}
-          rows={CELLS[layout.active].rows}
-          cells={cellsFor(`char:${active.cls}`, active.cls, layout.active)}
-        />
-      )}
-      {statLines(ui, view, active, now)}
+      <Box flexDirection="row" gap={1}>
+        {layout.active !== null && (
+          <Raster
+            key={`char:${active.cls}`}
+            columns={CELLS[layout.active].columns}
+            rows={CELLS[layout.active].rows}
+            cells={cellsFor(`char:${active.cls}`, active.cls, layout.active)}
+          />
+        )}
+        {layout.stats === 'beside' && (
+          <Box flexDirection="column" width={STATS_COLUMNS} alignSelf="flex-start">
+            {statLines(ui, view, active, now)}
+          </Box>
+        )}
+      </Box>
+      {layout.stats === 'below' && statLines(ui, view, active, now)}
       {layout.bug && (
         <Box flexDirection="column">
           <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
