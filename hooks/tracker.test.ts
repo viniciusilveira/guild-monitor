@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFEAT_MS } from './guild'
+import { DEFEAT_MS, EXPIRE_MS } from './guild'
 import {
   completeTurn,
   createTracker,
@@ -193,4 +193,45 @@ test('activity outside a turn keeps the guild awake without starting one', async
 
   expect(tracker.turn).toBe(null)
   expect(tracker.lastActivityAt).toBe(50)
+})
+
+const failedAt = (now: number, tool = npmTest) => {
+  const started = startTurn(fresh(), { id: 't1', prompt: 'rode os testes', now: 0 })
+
+  return toolFinished(started, { use: tool, isError: true, now, durationMs: 0 }).tracker
+}
+
+test('the clock expires a quiet live bug', async () => {
+  const tracker = failedAt(1_000)
+
+  expect(tick(tracker, 1_000 + EXPIRE_MS - 1).bug.phase).toBe('alive')
+  expect(tick(tracker, 1_000 + EXPIRE_MS).bug.phase).toBe('none')
+})
+
+test('a new failure restarts the quiet period', async () => {
+  let tracker = failedAt(1_000)
+  tracker = toolFinished(tracker, { use: edit, isError: true, now: 100_000, durationMs: 0 }).tracker
+
+  expect(tick(tracker, 1_000 + EXPIRE_MS).bug.phase).toBe('alive')
+  expect(tick(tracker, 100_000 + EXPIRE_MS - 1).bug.phase).toBe('alive')
+  expect(tick(tracker, 100_000 + EXPIRE_MS).bug.phase).toBe('none')
+})
+
+test('a success before the quiet period ends still defeats the bug', async () => {
+  let tracker = failedAt(1_000)
+  const fixed = toolFinished(tracker, { use: npmTest, isError: false, now: 1_000 + EXPIRE_MS - 1, durationMs: 0 })
+  tracker = fixed.tracker
+
+  expect(tracker.bug.phase).toBe('defeated')
+  expect(fixed.gain?.xp).toBe(12)
+  expect(tick(tracker, 1_000 + EXPIRE_MS - 1 + DEFEAT_MS - 1).bug.phase).toBe('defeated')
+  expect(tick(tracker, 1_000 + EXPIRE_MS - 1 + DEFEAT_MS).bug.phase).toBe('none')
+})
+
+test('an expired bug cannot be defeated or paid', async () => {
+  const expired = tick(failedAt(1_000), 1_000 + EXPIRE_MS)
+  const later = toolFinished(expired, { use: npmTest, isError: false, now: 1_000 + EXPIRE_MS + 1, durationMs: 0 })
+
+  expect(later.tracker.bug.phase).toBe('none')
+  expect(later.gain?.xp).toBe(2)
 })

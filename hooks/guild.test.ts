@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Bug, Snapshot } from './guild'
-import { animationFor, bugAt, categoryOf, DEFAULTS, DEFEAT_MS, NO_BUG, onToolResult } from './guild'
+import { animationFor, bugAt, categoryOf, DEFAULTS, DEFEAT_MS, EXPIRE_MS, NO_BUG, onToolResult } from './guild'
 
 const base: Snapshot = { working: false, active: 'guerreiro', idleMs: 0, contextPercent: 10 }
 const snap = (patch: Partial<Snapshot>): Snapshot => ({ ...base, ...patch })
@@ -85,5 +85,13 @@ test('a defeated bug is gone once its animation has run', async () => {
 
   expect(bugAt(defeated, 1_000 + DEFEAT_MS - 1)).toEqual(defeated)
   expect(bugAt(defeated, 1_000 + DEFEAT_MS)).toEqual(NO_BUG)
-  expect(bugAt({ phase: 'alive', category: 'Edit', since: 0 }, 999_999).phase).toBe('alive')
+  expect(bugAt({ phase: 'alive', category: 'Edit', since: 0 }, EXPIRE_MS - 1).phase).toBe('alive')
+})
+
+test('a live bug expires after the quiet period', async () => {
+  const alive: Bug = { phase: 'alive', category: 'Edit', since: 0 }
+
+  expect(EXPIRE_MS).toBe(120_000)
+  expect(bugAt(alive, EXPIRE_MS - 1)).toEqual(alive)
+  expect(bugAt(alive, EXPIRE_MS)).toEqual(NO_BUG)
 })

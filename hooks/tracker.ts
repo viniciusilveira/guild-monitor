@@ -97,7 +97,7 @@ export const toolFinished = (
   }
 }
 
-// A defeated bug leaves once its animation ran.
+// A defeated bug leaves once its animation ran, a live one after the quiet period.
 export const tick = (tracker: Tracker, now: number): Tracker => {
   const bug = bugAt(tracker.bug, now)
 
