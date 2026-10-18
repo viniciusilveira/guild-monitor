@@ -8,7 +8,7 @@ trap 'rm -f "$log"' EXIT
 
 run() {
   : >"$log"
-  env VERIFY_TYPES_CMD="${1}" VERIFY_TEST_CMD="${2}" VERIFY_VALIDATE_CMD="${3}" scripts/verify >/dev/null 2>&1
+  env -u VERIFY_SKIP_TYPES VERIFY_TYPES_CMD="${1}" VERIFY_TEST_CMD="${2}" VERIFY_VALIDATE_CMD="${3}" scripts/verify >/dev/null 2>&1
 }
 
 types_ok="echo types >>$log"
