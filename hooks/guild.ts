@@ -81,3 +81,30 @@ export const bugAt = (bug: Bug, now: number): Bug => {
 
   return bug
 }
+
+// The tools that only ask the person something (approve a plan, answer a question): an error from
+// them is never work that failed, only the person saying no or walking away.
+const INTERACTION_TOOLS: readonly string[] = ['ExitPlanMode', 'AskUserQuestion']
+
+// How the engine words a refusal in the error text the model reads. The result has no field that
+// tells a refusal from a failure (`isError` is the same for both), so the start of the text is the
+// only hint. Only the start counts: a failing command begins with `Exit code N`, so output that
+// merely mentions "rejected" (a `git push`) is never taken for a refusal.
+const REFUSAL_TEXTS: readonly string[] = [
+  'Permission for this tool use was denied',
+  "The user doesn't want to proceed with this tool use",
+  '[Request interrupted by user for tool use]',
+]
+
+export type ToolOutcome = { tool: string; isError: boolean; text?: string }
+
+// A call the person turned down (declined plan, denied permission, interrupted question) is not a
+// failure and spawns no bug.
+export const isRejection = (outcome: ToolOutcome): boolean => {
+  if (!outcome.isError) return false
+  if (INTERACTION_TOOLS.includes(outcome.tool)) return true
+
+  const text = (outcome.text ?? '').trimStart()
+
+  return REFUSAL_TEXTS.some(refusal => text.startsWith(refusal))
+}

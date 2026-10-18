@@ -84,7 +84,7 @@ O nível `n` começa em `40 × (n − 1)²` de XP: nível 2 com 40, nível 3 com
 
 ## O bug
 
-Quando uma chamada de ferramenta falha, o bug aparece embaixo dos status do personagem ativo. Uma chamada bem-sucedida **do mesmo tipo** depois dele o derrota (em comandos de shell, o mesmo programa e subcomando: `npm test`, `git push`; nas demais ferramentas, a mesma ferramenta). Se nenhuma chamada do mesmo tipo voltar, o bug some sozinho após **2 minutos sem novo erro de ferramenta**; um novo erro reinicia essa contagem. Chamadas recusadas por permissão ou por um hook não contam como falha.
+Quando uma chamada de ferramenta falha, o bug aparece embaixo dos status do personagem ativo. Uma chamada bem-sucedida **do mesmo tipo** depois dele o derrota (em comandos de shell, o mesmo programa e subcomando: `npm test`, `git push`; nas demais ferramentas, a mesma ferramenta). Se nenhuma chamada do mesmo tipo voltar, o bug some sozinho após **2 minutos sem novo erro de ferramenta**; um novo erro reinicia essa contagem. Chamadas recusadas por permissão ou por um hook, e as que **você mesmo recusa** (um plano recusado, uma permissão negada, uma pergunta interrompida), não contam como falha: não criam bug, não derrotam o bug vivo e não pagam XP. No `/guild trace` elas aparecem como `RECUSADA`, e não como `ERRO`. Reconhecer uma recusa é melhor esforço: um plano ou uma pergunta recusados são sempre reconhecidos, mas nas demais ferramentas isso depende do texto de recusa do engine, que pode mudar entre versões, e um comando de shell que você interrompe em andamento ainda cria bug.
 
 ## Painel lateral
 
@@ -114,7 +114,7 @@ Ele abre sozinho a partir de 144 colunas (110 depois que você mesmo o abriu), a
 |---|---|
 | `/guild panel` | abre o painel lateral e passa a abri-lo sempre |
 | `/guild bar` | fecha o painel e volta à barra inferior |
-| `/guild trace [N\|clear]` | mostra o registro das últimas N chamadas de ferramenta (padrão 20): quem estava em cena, quem ganhou o XP e um resumo; `clear` apaga. Só nomes de ferramenta, classes e o nome do programa de um comando de shell são guardados, nunca prompts, caminhos, argumentos nem variáveis |
+| `/guild trace [N\|clear]` | mostra o registro das últimas N chamadas de ferramenta (padrão 20): quem estava em cena, quem ganhou o XP (`ERRO` marca uma falha, `RECUSADA` uma chamada que você recusou) e um resumo; `clear` apaga. Só nomes de ferramenta, classes e o nome do programa de um comando de shell são guardados, nunca prompts, caminhos, argumentos nem variáveis |
 | `/guild <cena>` | mostra uma cena de demonstração (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` volta à sessão real |
 
 ## Requisitos

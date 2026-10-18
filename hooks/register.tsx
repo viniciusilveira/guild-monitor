@@ -6,7 +6,7 @@ import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
 import { choiceOf, demoState, SCENES, sceneOf } from './demo'
 import type { Settings } from './guild'
-import { DEFAULTS } from './guild'
+import { DEFAULTS, isRejection } from './guild'
 import type { Size } from './layout'
 import { chooseLayout } from './layout'
 import { chooseSidebarLayout } from './sidebar'
@@ -285,9 +285,11 @@ export const register: Register = (on, options) => {
     // A call a hook or a permission refused did not fail on its own: it neither raises nor defeats a bug.
     if (!('deny' in ran && ran.deny)) {
       const finishedAt = await $.clock.now()
+      const rejected = isRejection({ tool: use.tool, isError: ran.isError === true, text: ran.text })
       const done = toolFinished(tracker, {
         use,
         isError: ran.isError === true,
+        rejected,
         now: finishedAt,
         durationMs: finishedAt - startedAt,
       })
@@ -301,7 +303,8 @@ export const register: Register = (on, options) => {
         shown: tracker.active,
         paid: done.gain?.cls ?? (ran.isError === true ? undefined : classOf(use, tracker.planMode)),
         planMode: tracker.planMode,
-        isError: ran.isError === true ? true : undefined,
+        isError: ran.isError === true && !rejected ? true : undefined,
+        rejected: rejected ? true : undefined,
       })
       await saveTrace($, trace)
       await applyGain($, tracker, done.gain)
