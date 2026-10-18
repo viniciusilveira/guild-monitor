@@ -97,6 +97,19 @@ Num terminal largo, no layout de tela cheia do Claude Code (`/tui fullscreen`, 1
 
 Ele abre sozinho a partir de 144 colunas (110 depois que você mesmo o abriu), a não ser que você o tenha fechado: a escolha fica guardada. Onde não há espaço (terminal estreito ou o layout clássico, sem tela cheia), a guilda continua como a barra acima do prompt, então nunca fica sem guilda.
 
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel-explorador.png" alt="Explorador" width="280"><br>Explorador</td>
+    <td align="center"><img src="docs/screenshots/panel-mago.png" alt="Mago" width="280"><br>Mago</td>
+    <td align="center"><img src="docs/screenshots/panel-guerreiro.png" alt="Guerreiro" width="280"><br>Guerreiro</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel-bug.png" alt="Bug" width="280"><br>Bug</td>
+    <td align="center"><img src="docs/screenshots/panel-cansado.png" alt="Cansado" width="280"><br>Cansado</td>
+    <td align="center"><img src="docs/screenshots/panel-dormindo.png" alt="Dormindo" width="280"><br>Dormindo</td>
+  </tr>
+</table>
+
 | Comando | Faz |
 |---|---|
 | `/guild panel` | abre o painel lateral e passa a abri-lo sempre |
@@ -155,7 +168,7 @@ O `demo` mostra números inventados (HP 72%, MP 45% com 2h13 para reiniciar, ST 
 
 Não precisa reiniciar para trocar de cena: digite `/guild bug` (ou qualquer outra cena) e a banda muda na hora; `/guild off` volta à sessão real. O comando vale só para a sessão atual.
 
-## Capturas de tela
+## Capturas da barra inferior
 
 <table>
   <tr>

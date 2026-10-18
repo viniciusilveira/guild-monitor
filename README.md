@@ -97,6 +97,19 @@ On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 co
 
 It opens by itself from 144 columns (110 once you opened it yourself), unless you closed it: the choice is remembered. Where there is no room (a narrow terminal, or the classic non-fullscreen layout) the guild stays as the band above the prompt, so it is never missing.
 
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel-explorador.png" alt="Explorer" width="280"><br>Explorer</td>
+    <td align="center"><img src="docs/screenshots/panel-mago.png" alt="Mage" width="280"><br>Mage</td>
+    <td align="center"><img src="docs/screenshots/panel-guerreiro.png" alt="Warrior" width="280"><br>Warrior</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel-bug.png" alt="Bug" width="280"><br>Bug</td>
+    <td align="center"><img src="docs/screenshots/panel-cansado.png" alt="Tired" width="280"><br>Tired</td>
+    <td align="center"><img src="docs/screenshots/panel-dormindo.png" alt="Asleep" width="280"><br>Asleep</td>
+  </tr>
+</table>
+
 | Command | Does |
 |---|---|
 | `/guild panel` | open the side panel and keep opening it |
@@ -155,7 +168,7 @@ The band adapts to the terminal: first the active character, then the stats besi
 
 You do not need to restart to change scenes: type `/guild bug` (or any other scene) and the band switches at once; `/guild off` goes back to the real session. The command changes the scene for the current session only.
 
-## Screenshots
+## Screenshots of the bottom band
 
 <table>
   <tr>
