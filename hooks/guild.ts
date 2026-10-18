@@ -36,13 +36,17 @@ export const animationFor = (cls: TaskClass, snapshot: Snapshot, settings: Setti
 export type BugPhase = 'none' | 'alive' | 'defeated'
 
 // The enemy of the warrior: it shows up when a tool fails and goes down when
-// the same kind of call succeeds.
+// the same kind of call succeeds, or on its own after a quiet period.
 export type Bug = { phase: BugPhase; category: string; since: number }
 
 export const NO_BUG: Bug = { phase: 'none', category: '', since: 0 }
 
 // How long the defeat animation stays before the bug is gone.
 export const DEFEAT_MS = 1_200
+
+// How long a live bug stays without a new tool error before it is gone. A new
+// error restarts the count, since it stamps the bug anew.
+export const EXPIRE_MS = 120_000
 
 const RUNNERS_WITH_SUBCOMMAND = /^[a-z][\w.-]*$/
 
@@ -69,6 +73,11 @@ export const onToolResult = (bug: Bug, result: ToolResult): Bug => {
   return bug
 }
 
-// The bug a clock tick sees: a defeated one is gone once its animation ran.
-export const bugAt = (bug: Bug, now: number): Bug =>
-  bug.phase === 'defeated' && now - bug.since >= DEFEAT_MS ? NO_BUG : bug
+// The bug a clock tick sees: a defeated one is gone once its animation ran, and
+// a live one once the quiet period passed since its last error.
+export const bugAt = (bug: Bug, now: number): Bug => {
+  if (bug.phase === 'defeated' && now - bug.since >= DEFEAT_MS) return NO_BUG
+  if (bug.phase === 'alive' && now - bug.since >= EXPIRE_MS) return NO_BUG
+
+  return bug
+}
