@@ -6,6 +6,7 @@ import { doingOf } from './doing'
 import type { History } from './forecast'
 import { EMPTY_HISTORY, forecastLine } from './forecast'
 import type { Tracker } from './tracker'
+import { lineOf, modelLabel } from './tokens'
 import { CLASSES, progressOf } from './xp'
 
 export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string }
@@ -63,6 +64,14 @@ const turnSecondsOf = (tracker: Tracker, now: number): number | null => {
   return tracker.lastTurnMs === null || !Number.isFinite(tracker.lastTurnMs) ? null : wholeSeconds(tracker.lastTurnMs)
 }
 
+const tokensViewOf = (tracker: Tracker): ViewModel['tokens'] => {
+  const { last, session, subagents } = tracker.tokens
+  const sub = subagents === null ? null : lineOf(subagents)
+  if (last === null && sub === null) return null
+
+  return { turn: last === null ? null : lineOf(last), session: session === null ? null : lineOf(session), subagents: sub }
+}
+
 // `history` is the recent readings of the two windows, for their forecasts; empty shows none.
 export const buildView = (tracker: Tracker, usage: Usage, now: number, settings: Settings = DEFAULTS, history: History = EMPTY_HISTORY): ViewModel => {
   const snapshot: Snapshot = {
@@ -100,6 +109,8 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     forecast: { sevenDay: forecastLine(history.seven_day, now, 'seven_day'), fiveHour: forecastLine(history.five_hour, now, 'five_hour') },
     sessionSeconds: usage.startedAt === undefined ? null : wholeSeconds(now - usage.startedAt),
     turnSeconds: turnSecondsOf(tracker, now),
+    tokens: tokensViewOf(tracker),
+    model: tracker.tokens.model === null ? null : modelLabel(tracker.tokens.model),
   }
 }
 
@@ -149,6 +160,9 @@ export const bandForecast = (forecast: ViewModel['forecast']): { label: '5h' | '
 
   return chosen === undefined || chosen.line === null ? null : { label: chosen.label, line: chosen.line }
 }
+
+// The color of the lines of tokens (a low cache hit rate uses `URGENT_COLOR`).
+export const TOKENS_COLOR = '#5DADE2'
 
 // The red of a window that runs out before it resets.
 export const URGENT_COLOR = '#E74C3C'

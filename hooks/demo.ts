@@ -1,6 +1,8 @@
 import type { Settings } from './guild'
 import { DEFAULTS } from './guild'
 import type { Counters } from './counters'
+import type { Tokens } from './tokens'
+import { addTurn, NO_TOKENS } from './tokens'
 import type { Tracker } from './tracker'
 import { callStarted, createTracker, startTurn, toolFinished, toolStarted } from './tracker'
 import type { History } from './forecast'
@@ -35,6 +37,23 @@ const DEMO_TURN_MS = 32_000
 const DEMO_LAST_TURN_MS = 4 * MINUTE_MS
 
 const DEMO_COUNTERS: Counters = { combo: 7, best: 9, bugs: 3 }
+
+// Made-up tokens through the code the real ones go through: an earlier turn, the last one (142k of input, 87% from
+// the cache; 1,2M and 91% in all) and a subagent with a low hit rate (38%), so the red shows.
+const demoTokens = (): Tokens => {
+  const usage = (input: number, read: number, written: number, output: number, model: string) => ({
+    input_tokens: input,
+    cache_read_input_tokens: read,
+    cache_creation_input_tokens: written,
+    output_tokens: output,
+    model,
+  })
+  const model = 'claude-sonnet-5-5'
+  const earlier = addTurn(NO_TOKENS, usage(42_000, 968_460, 47_540, 78_000, model), false)
+  const last = addTurn(earlier, usage(6_000, 123_540, 12_460, 18_000, model), false)
+
+  return addTurn(last, usage(12_000, 11_400, 6_600, 4_100, model), true)
+}
 
 const demoGuild = () => {
   const levels = [
@@ -110,5 +129,5 @@ export const demoState = (scene: Scene, now: number, settings: Settings = DEFAUL
   // Made-up scores; the bug scene has just lost its combo to the failing call.
   const counters: Counters = scene === 'bug' ? { ...DEMO_COUNTERS, combo: 0 } : DEMO_COUNTERS
 
-  return { tracker: { ...state.tracker, counters, recent: demoHistory(now) }, usage: state.usage, history: demoReadings(now, state.usage) }
+  return { tracker: { ...state.tracker, counters, recent: demoHistory(now), tokens: demoTokens() }, usage: state.usage, history: demoReadings(now, state.usage) }
 }

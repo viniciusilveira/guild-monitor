@@ -4,6 +4,8 @@ import type { Counters } from './counters'
 import { NO_COUNTERS, onOperation } from './counters'
 import type { Bug } from './guild'
 import { bugAt, categoryOf, NO_BUG, onToolResult } from './guild'
+import type { Tokens } from './tokens'
+import { addTurn, NO_TOKENS } from './tokens'
 import type { Guild } from './xp'
 import { addXp, ANSWER_XP, BUG_BONUS, operationXp } from './xp'
 
@@ -42,6 +44,8 @@ export type Tracker = {
   running: readonly Running[]
   // How long the last turn that ended took, as its `turn.complete` reported it; null before the first.
   lastTurnMs: number | null
+  // The tokens the turns spent, in memory only: never stored, traced or toasted.
+  tokens: Tokens
 }
 
 export const createTracker = (guild: Guild, now: number): Tracker => ({
@@ -55,7 +59,16 @@ export const createTracker = (guild: Guild, now: number): Tracker => ({
   recent: [],
   running: [],
   lastTurnMs: null,
+  tokens: NO_TOKENS,
 })
+
+// What a finished turn spent, as its `turn.complete` reported it: a turn with no usage (interrupted, an API
+// error) adds nothing, and a subagent's goes to the subagents' own total.
+export const tokensSpent = (tracker: Tracker, usage: unknown, isSubagent: boolean): Tracker => {
+  const tokens = addTurn(tracker.tokens, usage, isSubagent)
+
+  return tokens === tracker.tokens ? tracker : { ...tracker, tokens }
+}
 
 // The class follows the turn as it unfolds: first the prompt, then the tools.
 const reclassify = (tracker: Tracker): Tracker =>

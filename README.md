@@ -128,6 +128,29 @@ The side panel has a line of counters right above the session and turn timers, f
 - **Bottom band.** It does not show the counters, so the compact band's 8 lines still hold.
 - **Demo scenes.** All of them show made-up values, `combo x7 · melhor x9 · bugs 3`; the `bug` scene has just lost its combo and shows `melhor x9 · bugs 3`.
 
+## Tokens and cache hit rate
+
+The side panel shows, right above the latest operations, how many tokens the session spent and how much the prompt cache helped:
+
+```
+tokens  input 142k · output 18k · cache 87%
+sessão  input 1,2M · output 96k · cache 91%
+subagentes input 30k · output 4,1k · cache 38%
+```
+
+The labels are in Portuguese, like the rest of the interface.
+
+- **Three lines.** `tokens` is the last main-agent turn that reported usage, `sessão` (session) is the session's running total and `subagentes` is the running total of subagent turns, on a line of its own so it does not blur the main agent's (it exists only after the first subagent turn; with no main turn yet, it is the only one).
+- **The numbers.** They come from the end of each turn: uncached input, output, cache read and cache written. The `input` shown is everything the model read (uncached + cache read + cache written). The **cache hit rate** is cache read / (cache read + uncached input + cache written), per turn and accumulated (the rate of the sum, not the mean of the rates). When it cannot be computed (output only), the line says `cache --`.
+- **Abbreviation.** One formatter abbreviates with a decimal comma: `999`, `12,4k`, `142k`, `1,2M`.
+- **Low rate.** Under 50% the line turns red; 50% or more uses the normal color.
+- **Turns without usage.** An interrupted turn or one ended by an API error carries no usage and adds nothing; the lines stay as they were (and do not show before the first turn with usage).
+- **Model.** The model of the last main-agent turn shows dim beside the active character's name (`Guerreiro Nv.3 sonnet-5-5`, without the `claude-` prefix and the date). If it does not fit it shows only the family (`sonnet`), and if not even that, it is left out.
+- **Narrow panel.** Each line takes the longest form that fits: `tokens  input 142k · output 18k · cache 87%`, then `tokens  in 142k · out 18k · 87%`, then `tokens  142k/18k 87%`, then just `tokens  87%`; if not even the last fits, the line is left out.
+- **Bottom band.** It does not show the token lines (the compact band's 8 lines still hold); it shows only the dim model beside the name.
+- **Memory only.** Nothing is saved to the store, the `/guild trace` log or a toast, and everything starts over with the session.
+- **Demo scenes.** All of them show made-up values: `tokens  input 142k · output 18k · cache 87%`, `sessão  input 1,2M · output 96k · cache 91%` and `subagentes input 30k · output 4,1k · cache 38%` (this one in red, to show the low rate), with the model `sonnet-5-5` beside the name. While a scene runs, the real usage is ignored.
+
 ## Side panel
 
 On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 columns or more), the guild opens as a **panel to the left of the conversation**:
@@ -247,7 +270,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 

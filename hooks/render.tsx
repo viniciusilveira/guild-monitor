@@ -8,7 +8,8 @@ import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
 import { STATS_COLUMNS } from './sidebar'
-import { agoText, bandForecast, bar, COLORS, costText, durationText, fitForecast, healthColor, METER_COLORS, NAMES, percentText, restText, untilReset, URGENT_COLOR } from './view'
+import { modelFit, tokenText } from './tokens'
+import { agoText, bandForecast, bar, COLORS, costText, durationText, fitForecast, healthColor, METER_COLORS, NAMES, TOKENS_COLOR, percentText, restText, untilReset, URGENT_COLOR } from './view'
 
 // The cells of one Raster, given its key, who it draws and at what size. The
 // caller keeps track of what it handed out, to animate it later.
@@ -40,15 +41,20 @@ const seconds = (value: number | null): string => (value === null ? '--' : durat
 
 // The lines of the active character's stats, each in the color of its meter. What the character does (or
 // that it rests, is tired or sleeps) is the line above them, so the stats do not repeat it.
-const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number, turnTimer = false) => {
-  const { Text } = ui
+const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number, width: number, turnTimer = false) => {
+  const { Box, Text } = ui
   const xpPercent = active.xpNeeded > 0 ? Math.round((active.xpInLevel / active.xpNeeded) * 100) : 0
   const reset = untilReset(view.manaResetsAt, now)
+  const name = `${NAMES[active.cls]} Nv.${active.level}`
+  const model = view.model === null ? null : modelFit(view.model, width - name.length - 1)
 
   return [
-    <Text key="name" bold color={COLORS[active.cls]}>
-      {`${NAMES[active.cls]} Nv.${active.level}`}
-    </Text>,
+    <Box key="name" flexDirection="row" gap={1}>
+      <Text bold color={COLORS[active.cls]}>
+        {name}
+      </Text>
+      {model !== null && <Text dimColor>{model}</Text>}
+    </Box>,
     <Text key="xp" color={METER_COLORS.xp}>{`XP ${bar(xpPercent)} ${active.xpInLevel}/${active.xpNeeded}`}</Text>,
     <Text key="hp" color={healthColor(view.hp)}>{`HP ${bar(view.hp)} ${percentText(view.hp)}`}</Text>,
     <Text key="mp" color={view.mana === null ? METER_COLORS.unknown : METER_COLORS.mana}>
@@ -101,6 +107,29 @@ const bandForecastLine = (ui: Elements['terminal'], view: ViewModel) => {
   )
 }
 
+// The panel's lines of tokens: the last turn, the session and the subagents, each only when it has something to
+// say; a low cache hit rate is red. None at all before a turn reports usage.
+const tokenLines = (ui: Elements['terminal'], view: ViewModel, width: number) => {
+  const { Text } = ui
+  const rows = [
+    { key: 'tokens-turn', label: 'tokens', line: view.tokens?.turn ?? null },
+    { key: 'tokens-session', label: 'sessão', line: view.tokens?.session ?? null },
+    { key: 'tokens-subagents', label: 'subagentes', line: view.tokens?.subagents ?? null },
+  ]
+
+  return rows.flatMap(({ key, label, line }) => {
+    const text = line === null ? null : tokenText(label, line, width)
+
+    return line === null || text === null
+      ? []
+      : [
+          <Text key={key} color={line.low ? URGENT_COLOR : TOKENS_COLOR}>
+            {text}
+          </Text>,
+        ]
+  })
+}
+
 // The band above the prompt: the active character, its attributes, the other
 // two characters and, when a tool is failing, the bug.
 export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
@@ -126,7 +155,7 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
       {layout.info && (
         <Box flexDirection="column" width={INFO_COLUMNS} alignSelf="flex-start">
           {doingText(ui, view, active, INFO_COLUMNS)}
-          {statLines(ui, view, active, now, true)}
+          {statLines(ui, view, active, now, INFO_COLUMNS, true)}
           {layout.active === 'full' && forecast}
           {layout.bugBelow ? (
             <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
@@ -214,14 +243,14 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
         )}
         {layout.stats === 'beside' && (
           <Box flexDirection="column" width={STATS_COLUMNS} alignSelf="flex-start">
-            {statLines(ui, view, active, now)}
+            {statLines(ui, view, active, now, STATS_COLUMNS)}
             {legend}
             {forecastLines(ui, view, STATS_COLUMNS)}
             {bugUnderStats && bugBox}
           </Box>
         )}
       </Box>
-      {layout.stats === 'below' && statLines(ui, view, active, now)}
+      {layout.stats === 'below' && statLines(ui, view, active, now, columns)}
       {layout.stats === 'below' && legend}
       {layout.stats === 'below' && forecastLines(ui, view, columns)}
       {layout.bug && !bugUnderStats && bugBox}
@@ -243,6 +272,7 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
       <Text key="counters" color={METER_COLORS.gold}>{counterLine(counterSegments(view.counters))}</Text>
       <Text key="session-time" dimColor>{`sessão ${seconds(view.sessionSeconds)}`}</Text>
       <Text key="turn-time" dimColor>{`turno ${seconds(view.turnSeconds)}`}</Text>
+      {tokenLines(ui, view, columns)}
       <Text dimColor>Últimas operações</Text>
       {history.length === 0 && <Text dimColor>nenhuma ainda</Text>}
       {history.map((entry, i) => (
