@@ -29,6 +29,9 @@ export type Doing = { verb: string; target: string | null }
 // comes before the reset (red). In memory and on screen only.
 export type ForecastView = { text: string; short: string; urgent: boolean }
 
+// One class's share of the session's cost, an estimate: micro-dollars and whole percent (the three add up to 100).
+export type GoldLine = { cls: TaskClass; micros: number; percent: number }
+
 // What the band draws, with the per-frame animation left out: it changes when
 // something happens (a turn, a tool, a measurement), not at every frame.
 export type ViewModel = {
@@ -43,6 +46,9 @@ export type ViewModel = {
   stamina: number | null
   manaResetsAt: string | null
   costUsd: number | null
+  // What each class spent of that cost, as an estimate, in the order of the classes; null until the cost has changed.
+  // In memory and on screen only.
+  gold: GoldLine[] | null
   // The session's scores, in memory only: operations in a row that worked, the best such run and bugs defeated.
   counters: { combo: number; best: number; bugs: number }
   // The latest payments of XP, oldest first.

@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { DEFAULTS, DEFEAT_MS } from './guild'
 import { chooseLayout } from './layout'
-import { completeTurn, createTracker, startTurn, toolFinished } from './tracker'
+import { completeTurn, costMeasured, createTracker, startTurn, toolFinished } from './tracker'
 import { bandForecast, bar, buildView, fitForecast, costText, durationText, frameAt, healthColor, mergeUsage, METER_COLORS, percentText, agoText, sheetIdFor, stateText, untilReset, usageFrom } from './view'
 import { addXp, emptyGuild } from './xp'
 
@@ -331,4 +331,26 @@ test('forecast C17 pick: the band line is the urgent window, else the 5h one, el
   expect(bandForecast({ fiveHour: calm, sevenDay: idle })).toEqual({ label: '5h', line: calm })
   expect(bandForecast({ fiveHour: null, sevenDay: idle })).toEqual({ label: '7d', line: idle })
   expect(bandForecast({ fiveHour: idle, sevenDay: null })).toEqual({ label: '5h', line: idle })
+})
+
+test('gold C17: the view carries the lines in class order and none before a change', async () => {
+  const none = createTracker(emptyGuild(), NOW)
+  expect(buildView(none, usage({ costUsd: 3 }), NOW).gold).toBe(null)
+  // The base alone is no change either.
+  expect(buildView(costMeasured(none, 3), usage({ costUsd: 3 }), NOW).gold).toBe(null)
+
+  let tracker = startTurn(costMeasured(none, 1), { id: 't1', prompt: 'oi', now: NOW })
+  tracker = toolFinished(tracker, { use: { tool: 'Read' }, isError: false, now: NOW, durationMs: 10 }).tracker
+  tracker = toolFinished(tracker, { use: { tool: 'Edit' }, isError: false, now: NOW, durationMs: 10 }).tracker
+  tracker = toolFinished(tracker, { use: { tool: 'Edit' }, isError: false, now: NOW, durationMs: 10 }).tracker
+  tracker = toolFinished(tracker, { use: { tool: 'Edit' }, isError: false, now: NOW, durationMs: 10 }).tracker
+  tracker = toolFinished(tracker, { use: { tool: 'TodoWrite' }, isError: false, now: NOW, durationMs: 10 }).tracker
+  tracker = costMeasured(tracker, 6)
+
+  // 1 Mage, 3 Warrior, 1 Explorer operations share $5.00: $1.00, $3.00, $1.00.
+  expect(buildView(tracker, usage({ costUsd: 6 }), NOW).gold).toEqual([
+    { cls: 'mago', micros: 1_000_000, percent: 20 },
+    { cls: 'guerreiro', micros: 3_000_000, percent: 60 },
+    { cls: 'explorador', micros: 1_000_000, percent: 20 },
+  ])
 })
