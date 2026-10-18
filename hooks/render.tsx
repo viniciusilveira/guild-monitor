@@ -2,11 +2,12 @@ import type { Elements } from 'claude-code'
 
 import type { ViewModel } from '../types'
 import type { TaskClass } from './classify'
+import { doingLine } from './doing'
 import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
 import { STATS_COLUMNS } from './sidebar'
-import { agoText, bar, COLORS, costText, healthColor, METER_COLORS, NAMES, percentText, stateText, untilReset } from './view'
+import { agoText, bar, COLORS, costText, healthColor, METER_COLORS, NAMES, percentText, restText, untilReset } from './view'
 
 // The cells of one Raster, given its key, who it draws and at what size. The
 // caller keeps track of what it handed out, to animate it later.
@@ -21,7 +22,20 @@ export type BandArgs = {
 
 type Char = ViewModel['chars'][number]
 
-// The lines of the active character's stats, each in the color of its meter.
+// What the active character is doing right now, or resting; it gives up the name and then the target
+// when the width does not hold them.
+const doingText = (ui: Elements['terminal'], view: ViewModel, active: Char, columns: number) => {
+  const { Text } = ui
+
+  return (
+    <Text key="doing" bold color={COLORS[active.cls]}>
+      {doingLine({ name: NAMES[active.cls], doing: view.doing, rest: restText(active.anim), columns })}
+    </Text>
+  )
+}
+
+// The lines of the active character's stats, each in the color of its meter. What the character does (or
+// that it rests, is tired or sleeps) is the line above them, so the stats do not repeat it.
 const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number) => {
   const { Text } = ui
   const xpPercent = active.xpNeeded > 0 ? Math.round((active.xpInLevel / active.xpNeeded) * 100) : 0
@@ -30,9 +44,6 @@ const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now:
   return [
     <Text key="name" bold color={COLORS[active.cls]}>
       {`${NAMES[active.cls]} Nv.${active.level}`}
-    </Text>,
-    <Text key="state" dimColor>
-      {stateText(active.cls, active.anim)}
     </Text>,
     <Text key="xp" color={METER_COLORS.xp}>{`XP ${bar(xpPercent)} ${active.xpInLevel}/${active.xpNeeded}`}</Text>,
     <Text key="hp" color={healthColor(view.hp)}>{`HP ${bar(view.hp)} ${percentText(view.hp)}`}</Text>,
@@ -69,10 +80,12 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
       />
       {layout.info && (
         <Box flexDirection="column" width={INFO_COLUMNS} alignSelf="flex-start">
+          {doingText(ui, view, active, INFO_COLUMNS)}
           {statLines(ui, view, active, now)}
-          {view.bug !== 'none' && !layout.bug && !layout.bugBelow && <Text color="red">bug na área!</Text>}
           {layout.bugBelow ? (
             <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
+          ) : view.bug !== 'none' && !layout.bug ? (
+            <Text color="red">bug na área!</Text>
           ) : (
             <Text dimColor>HP=7d MP=5h ST=ctx</Text>
           )}
@@ -104,6 +117,8 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
 
 export type SidebarArgs = {
   view: ViewModel
+  // The width of the panel's body, which decides how much of the doing line fits.
+  columns: number
   layout: SidebarLayout
   now: number
   cellsFor: CellsFor
@@ -115,7 +130,7 @@ const HISTORY_ROWS = 8
 // latest XP payments at the bottom. The engine scrolls what does not fit.
 export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
   const { Box, Text, Raster } = ui
-  const { view, layout, now, cellsFor } = args
+  const { view, columns, layout, now, cellsFor } = args
   const active = view.chars.find(char => char.cls === view.active) ?? view.chars[0]
   if (active === undefined) return undefined
 
@@ -139,6 +154,7 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
 
   return (
     <Box flexDirection="column">
+      {doingText(ui, view, active, columns)}
       <Box flexDirection="row" gap={1}>
         {layout.active !== null && (
           <Raster

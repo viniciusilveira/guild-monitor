@@ -2,6 +2,7 @@ import type { ViewModel } from '../types'
 import type { TaskClass } from './classify'
 import type { Animation, Settings, Snapshot } from './guild'
 import { animationFor, bugAt, DEFAULTS } from './guild'
+import { doingOf } from './doing'
 import type { Tracker } from './tracker'
 import { CLASSES, progressOf } from './xp'
 
@@ -75,6 +76,7 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     manaResetsAt: hours?.resetsAt ?? null,
     costUsd: usage.costUsd ?? null,
     recent: [...tracker.recent],
+    doing: doingOf(tracker.running),
   }
 }
 
@@ -118,6 +120,14 @@ const DOING: Record<TaskClass, string> = { mago: 'planejando', guerreiro: 'em co
 
 export const stateText = (cls: TaskClass, anim: Animation): string => {
   if (anim === 'trabalho') return DOING[cls]
+  if (anim === 'cansado') return 'cansado'
+  if (anim === 'dormindo') return 'dormindo'
+
+  return 'de prontidão'
+}
+
+// What the line says when no call runs: the character rests, is tired or sleeps.
+export const restText = (anim: Animation): string => {
   if (anim === 'cansado') return 'cansado'
   if (anim === 'dormindo') return 'dormindo'
 

@@ -8,6 +8,10 @@ import { addXp, ANSWER_XP, BUG_BONUS, operationXp } from './xp'
 const MAX_TOOLS = 500
 const MAX_RECENT = 20
 
+// A tool call that has started and not finished. The target (a file name, the first words of a
+// command) is for the screen only: nothing here is ever written to the store.
+export type Running = { id: number; tool: string; target?: string }
+
 export type Turn = {
   id: string
   prompt: string
@@ -28,6 +32,8 @@ export type Tracker = {
   guild: Guild
   lastActivityAt: number
   recent: readonly Entry[]
+  // Calls in progress, oldest first: the last one is the most recent not yet finished.
+  running: readonly Running[]
 }
 
 export const createTracker = (guild: Guild, now: number): Tracker => ({
@@ -38,6 +44,7 @@ export const createTracker = (guild: Guild, now: number): Tracker => ({
   guild,
   lastActivityAt: now,
   recent: [],
+  running: [],
 })
 
 // The class follows the turn as it unfolds: first the prompt, then the tools.
@@ -56,6 +63,7 @@ export const startTurn = (tracker: Tracker, start: { id: string; prompt: string;
   reclassify({
     ...tracker,
     turn: { id: start.id, prompt: start.prompt, tools: [] },
+    running: [],
     lastActivityAt: start.now,
   })
 
@@ -67,6 +75,17 @@ export const toolStarted = (tracker: Tracker, use: ToolUse, now: number): Tracke
         turn: { ...tracker.turn, tools: [...tracker.turn.tools, use].slice(-MAX_TOOLS) },
         lastActivityAt: now,
       })
+
+export const callStarted = (tracker: Tracker, call: Running): Tracker => ({
+  ...tracker,
+  running: [...tracker.running.filter(item => item.id !== call.id), call].slice(-MAX_TOOLS),
+})
+
+// A call ends by success, error or refusal alike: it leaves the list.
+export const callEnded = (tracker: Tracker, id: number): Tracker =>
+  tracker.running.some(item => item.id === id)
+    ? { ...tracker, running: tracker.running.filter(item => item.id !== id) }
+    : tracker
 
 export type Gain = { cls: TaskClass; xp: number; level: number; leveledUp: boolean }
 
@@ -117,7 +136,7 @@ export const completeTurn = (
   const turn = tracker.turn
   if (turn === null || turn.id !== end.id) return { tracker }
 
-  const idle: Tracker = { ...tracker, turn: null, lastActivityAt: end.now }
+  const idle: Tracker = { ...tracker, turn: null, running: [], lastActivityAt: end.now }
   if (end.reason !== 'answer') return { tracker: idle }
 
   const added = addXp(tracker.guild, tracker.active, ANSWER_XP)

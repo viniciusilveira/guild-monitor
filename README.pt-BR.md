@@ -86,6 +86,17 @@ O nível `n` começa em `40 × (n − 1)²` de XP: nível 2 com 40, nível 3 com
 
 Quando uma chamada de ferramenta falha, o bug aparece embaixo dos status do personagem ativo. Uma chamada bem-sucedida **do mesmo tipo** depois dele o derrota (em comandos de shell, o mesmo programa e subcomando: `npm test`, `git push`; nas demais ferramentas, a mesma ferramenta). Se nenhuma chamada do mesmo tipo voltar, o bug some sozinho após **2 minutos sem novo erro de ferramenta**; um novo erro reinicia essa contagem. Chamadas recusadas por permissão ou por um hook, e as que **você mesmo recusa** (um plano recusado, uma permissão negada, uma pergunta interrompida), não contam como falha: não criam bug, não derrotam o bug vivo e não pagam XP. No `/guild trace` elas aparecem como `RECUSADA`, e não como `ERRO`. Reconhecer uma recusa é melhor esforço: um plano ou uma pergunta recusados são sempre reconhecidos, mas nas demais ferramentas isso depende do texto de recusa do engine, que pode mudar entre versões, e um comando de shell que você interrompe em andamento ainda cria bug.
 
+## O que o personagem está fazendo agora
+
+Uma linha no topo do painel lateral (e no topo dos status na barra inferior, quando cabem) diz o que o personagem ativo está fazendo agora, por exemplo `Guerreiro: editando register.tsx` ou `Explorador: pesquisando na web`.
+
+- A linha acompanha as chamadas de ferramenta: aparece quando a chamada começa e some quando ela termina, seja com sucesso, erro ou recusa por permissão ou hook. Com várias chamadas em paralelo, vale a mais recente que ainda não terminou. Uma chamada que espera a sua permissão aparece como em andamento até você responder, e some quando é recusada: a checagem de permissão do engine roda depois do hook deste mod e a resposta do diálogo não é observável, então não dá para distinguir a chamada recusada antes.
+- Um verbo por tipo de ferramenta: `lendo` (Read), `buscando` (Grep, Glob), `pesquisando na web` (WebSearch, WebFetch), `editando` (Edit), `escrevendo` (Write), `executando` (Bash), `planejando` (planos e listas de tarefas) e `chamando um aliado` (subagentes; o que o subagente faz por dentro não aparece).
+- O alvo é só o nome do arquivo, sem o diretório, ou, num comando de shell, só o programa e um subcomando simples (`npm test`, `git commit`), cortado em 24 caracteres. Flags, valores, atribuições `NOME=valor`, URLs e credenciais nunca aparecem, já que o painel pode ser compartilhado ou capturado; `…` marca o que ficou de fora. Ele existe **só na tela e na memória**: nunca é salvo no store nem no registro do `/guild trace`.
+- Quando nada roda, ou o turno termina, a linha mostra o repouso: `de prontidão`, `cansado` ou `dormindo`.
+- Num painel estreito a linha abre mão do nome, depois do alvo, e termina só com o verbo.
+- As cenas de demonstração `explorador`, `mago`, `guerreiro` e `bug` mostram uma chamada em andamento; `cansado` e `dormindo` mostram o repouso. As capturas abaixo são anteriores a essa linha e não a mostram.
+
 ## Painel lateral
 
 Num terminal largo, no layout de tela cheia do Claude Code (`/tui fullscreen`, 110 colunas ou mais), a guilda abre como um **painel à esquerda da conversa**:
@@ -204,7 +215,7 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 - `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
 - `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
-- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
+- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).
 
