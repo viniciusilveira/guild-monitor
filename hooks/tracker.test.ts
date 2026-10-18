@@ -2,6 +2,8 @@ import { expect, test } from 'claude-code/testing'
 
 import { DEFEAT_MS, EXPIRE_MS } from './guild'
 import {
+  callEnded,
+  callStarted,
   completeTurn,
   createTracker,
   setPlanMode,
@@ -256,4 +258,41 @@ test('a rejected call raises no bug, defeats none and pays no XP', async () => {
   expect(after.tracker.bug).toEqual(live.bug)
   expect(after.gain).toBeUndefined()
   expect(after.tracker.guild).toEqual(live.guild)
+})
+
+const call = (id: number, tool: string, target?: string) => ({ id, tool, target })
+
+test('running calls: the latest call not finished is the one that counts', async () => {
+  let tracker = startTurn(fresh(), { id: 't1', prompt: 'oi', now: 0 })
+  tracker = callStarted(tracker, call(1, 'Read', 'a.ts'))
+  tracker = callStarted(tracker, call(2, 'Edit', 'b.ts'))
+  expect(tracker.running.at(-1)).toEqual(call(2, 'Edit', 'b.ts'))
+
+  tracker = callEnded(tracker, 2)
+  expect(tracker.running.at(-1)).toEqual(call(1, 'Read', 'a.ts'))
+
+  tracker = callEnded(tracker, 1)
+  expect(tracker.running).toEqual([])
+})
+
+test('running calls: a finished, failed or refused call leaves the list', async () => {
+  const base = startTurn(fresh(), { id: 't1', prompt: 'oi', now: 0 })
+  const running = callStarted(callStarted(base, call(1, 'Bash', 'npm test')), call(2, 'Edit', 'a.ts'))
+
+  const failed = toolFinished(running, { use: { tool: 'Bash', command: 'npm test' }, isError: true, now: 5, durationMs: 1 })
+  expect(callEnded(failed.tracker, 1).running).toEqual([call(2, 'Edit', 'a.ts')])
+
+  const refused = toolFinished(running, { use: { tool: 'Edit' }, isError: true, rejected: true, now: 5, durationMs: 1 })
+  expect(callEnded(refused.tracker, 2).running).toEqual([call(1, 'Bash', 'npm test')])
+
+  expect(callEnded(running, 99).running).toEqual(running.running)
+})
+
+test('running calls: the end of the turn clears them', async () => {
+  const running = callStarted(startTurn(fresh(), { id: 't1', prompt: 'oi', now: 0 }), call(1, 'Edit', 'a.ts'))
+  const done = completeTurn(running, { id: 't1', reason: 'answer', now: 9 })
+  expect(done.tracker.running).toEqual([])
+
+  const interrupted = completeTurn(running, { id: 't1', reason: 'interrupted', now: 9 })
+  expect(interrupted.tracker.running).toEqual([])
 })

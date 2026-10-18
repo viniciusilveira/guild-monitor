@@ -21,6 +21,10 @@ export type RecentOp = {
   tool: string
 }
 
+// What the active character is doing now: the verb of the tool and, for a file or a shell command,
+// its short target. It lives on screen and in memory only, never in the store.
+export type Doing = { verb: string; target: string | null }
+
 // What the band draws, with the per-frame animation left out: it changes when
 // something happens (a turn, a tool, a measurement), not at every frame.
 export type ViewModel = {
@@ -37,6 +41,8 @@ export type ViewModel = {
   costUsd: number | null
   // The latest payments of XP, oldest first.
   recent: RecentOp[]
+  // The latest call that has not finished, or null when nothing runs.
+  doing: Doing | null
 }
 
 declare module 'claude-code' {
