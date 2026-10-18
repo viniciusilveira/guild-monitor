@@ -52,25 +52,39 @@ const share = (delta: number, ops: Record<TaskClass, number>): Record<TaskClass,
   return { ...parts, [heaviest]: parts[heaviest] + left }
 }
 
-// A measurement of the cost closes the interval since the last one. The change goes to the classes of the
-// operations that ran in it, in proportion to their number, or to the active class when none did. The first
-// measurement is only the base; a cost that did not change attributes nothing; a lower one is a session that began
-// again (`/clear`): the split starts over; what is not a cost changes nothing at all.
-export const goldMeasured = (gold: Gold, usd: unknown, active: TaskClass): Gold => {
+// What an interval looks like at the moment a reading of the cost is asked for: the operations that finished so far
+// and the class active then. The reading arrives later, and what happens while it is on its way belongs to the
+// interval that follows it.
+export type Interval = { ops: Record<TaskClass, number>; active: TaskClass }
+
+export const intervalOf = (gold: Gold, active: TaskClass): Interval => ({ ops: gold.ops, active })
+
+// A measurement of the cost closes the interval since the last one, as `taken` (the operations) and `active` saw it;
+// by default the operations are those so far.
+// The change goes to the classes of the operations that ran in it, in proportion to their number, or to the active
+// class when none did; operations that finished after `taken` stay for the next interval. The first measurement is
+// only the base; a cost that did not change attributes nothing; a lower one is a session that began again
+// (`/clear`): the split starts over; what is not a cost changes nothing at all.
+export const goldMeasured = (gold: Gold, usd: unknown, active: TaskClass, taken: Record<TaskClass, number> = gold.ops): Gold => {
   const micros = microsOf(usd)
   if (micros === null) return gold
-  if (gold.last === null || micros < gold.last) return restart(micros)
-  if (micros === gold.last) return { ...gold, ops: NONE }
+
+  // Only operations still waiting count as the interval's: a measurement in between may have closed some already.
+  const weights = Object.fromEntries(CLASSES.map(cls => [cls, Math.min(taken[cls], gold.ops[cls])])) as Record<TaskClass, number>
+  const later = Object.fromEntries(CLASSES.map(cls => [cls, gold.ops[cls] - weights[cls]])) as Record<TaskClass, number>
+
+  if (gold.last === null || micros < gold.last) return { ...restart(micros), ops: later }
+  if (micros === gold.last) return { ...gold, ops: later }
 
   const delta = micros - gold.last
-  const count = CLASSES.reduce((sum, cls) => sum + gold.ops[cls], 0)
-  const parts = count === 0 ? { ...NONE, [active]: delta } : share(delta, gold.ops)
+  const count = CLASSES.reduce((sum, cls) => sum + weights[cls], 0)
+  const parts = count === 0 ? { ...NONE, [active]: delta } : share(delta, weights)
 
   return {
     last: micros,
     base: gold.base,
     spent: Object.fromEntries(CLASSES.map(cls => [cls, gold.spent[cls] + parts[cls]])) as Record<TaskClass, number>,
-    ops: NONE,
+    ops: later,
   }
 }
 

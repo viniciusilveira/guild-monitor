@@ -238,3 +238,25 @@ test('gold C16: lines are written in the longest form that fits every class', as
   expect(moneyText(999_999)).toBe('1.00')
   expect(moneyText(0)).toBe('0.00')
 })
+
+test('gold C33: operations that finish after the interval was taken stay for the next one', async () => {
+  const base = step(NO_GOLD, 1)
+  const taken = goldOperation(base, 'guerreiro').ops
+  const later = goldOperation(goldOperation(goldOperation(base, 'guerreiro'), 'explorador'), 'explorador')
+
+  // The reading was asked for with one warrior operation; two explorer ones came while waiting.
+  const closed = goldMeasured(later, 2, 'mago', taken)
+  expect(spentOf(closed)).toEqual([0, micros(1), 0])
+  expect(closed.ops).toEqual({ mago: 0, guerreiro: 0, explorador: 2 })
+  expect(spentOf(goldMeasured(closed, 3, 'mago'))).toEqual([0, micros(1), micros(1)])
+
+  // A stale reading arriving after another one already closed those operations counts none of them twice: they
+  // are gone, so the change goes to the class active when it was asked for.
+  const stale = goldMeasured(goldMeasured(later, 2, 'mago'), 3, 'guerreiro', taken)
+  expect(stale.ops).toEqual({ mago: 0, guerreiro: 0, explorador: 0 })
+  expect(sum(stale)).toBe(micros(2))
+  expect(stale.spent.guerreiro).toBeGreaterThanOrEqual(micros(1))
+  // Unchanged and lower readings keep the later operations as well.
+  expect(goldMeasured(later, 1, 'mago', taken).ops).toEqual({ mago: 0, guerreiro: 0, explorador: 2 })
+  expect(goldMeasured(later, 0.5, 'mago', taken).ops).toEqual({ mago: 0, guerreiro: 0, explorador: 2 })
+})

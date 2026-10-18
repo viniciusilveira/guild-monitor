@@ -56,6 +56,9 @@ let limits: unknown[] = []
 // The cost `session.usage` reports: a test sets `nextCost` before `setup` and `cost` while the clock runs.
 let nextCost: unknown = 1.5
 let cost: unknown = 1.5
+// A test that holds the answer of `session.usage`: set `usageGate`, wait for `usageHeld`, then release it.
+let usageGate: Promise<void> | undefined
+let usageHeld = false
 // A test that moves the time itself (`jump`) instead of letting a fake clock tick through it: `nextFast` before
 // `setup`, then `fakeNow` is what `$.clock.now()` answers. The engine still calls the `clock.every` callback of the
 // plugin in a loop, but it reads `limits`, which is empty in these tests: the readings come only from `jump`.
@@ -77,6 +80,8 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   nextLimits = []
   cost = nextCost
   nextCost = 1.5
+  usageGate = undefined
+  usageHeld = false
   isFast = nextFast
   nextFast = false
   fakeNow = START
@@ -88,7 +93,14 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   }
   mountStore(on)
   on('session.measure', async (_$, e) => ({ changed: (e as { changed: string[] }).changed }) as never)
-  on('session.usage', async () => ({ value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: limits, cost: { usd: cost } } }) as never)
+  on('session.usage', async () => {
+    if (usageGate !== undefined) {
+      usageHeld = true
+      await usageGate
+    }
+
+    return { value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: limits, cost: { usd: cost } } } as never
+  })
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
   on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }) as never)
@@ -1812,4 +1824,29 @@ test('gold C31: a split that began at zero has no caption, and a clear that reba
   await measureCost($, 0.5)
   expect((await goldTexts($)).length).toBe(3)
   expect(await noteIn($, 60)).toBe(undefined)
+})
+
+test('gold C32: an operation that finishes while the cost is being read weighs on the next interval', OPTIONS, async ($, on) => {
+  const clock = await setup($, on)
+  await clock.advance(100)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+
+  // The 2 second reading asks for the cost; the answer ($1.00 more) is held while a read finishes.
+  cost = 2.5
+  let release = () => {}
+  usageGate = new Promise<void>(resolve => (release = resolve))
+  const reading = clock.advance(2_100)
+  await until(() => usageHeld, 'the held reading of the session')
+  await call($, 'Read', { file_path: '/x/a.ts' })
+  usageGate = undefined
+  release()
+  await reading
+
+  // The interval it closed was the Edit's alone: the read, which ended during the wait, is not in it.
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
+
+  // The read weighs on the next interval.
+  await measureCost($, 3.5)
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (50%)', 'Explorador ~$1.00 (50%)'])
 })

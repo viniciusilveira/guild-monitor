@@ -1,7 +1,8 @@
 import type { TaskClass, ToolUse } from './classify'
 import { classify, classOf, DEFAULT_CLASS } from './classify'
 import type { Gold } from './gold'
-import { goldMeasured, goldOperation, NO_GOLD } from './gold'
+import type { Interval } from './gold'
+import { goldMeasured, goldOperation, intervalOf, NO_GOLD } from './gold'
 import type { Counters } from './counters'
 import { NO_COUNTERS, onOperation } from './counters'
 import type { Bug } from './guild'
@@ -75,10 +76,14 @@ export const tokensSpent = (tracker: Tracker, usage: unknown, isSubagent: boolea
   return tokens === tracker.tokens ? tracker : { ...tracker, tokens }
 }
 
+// The interval a reading of the cost is about to close: take it when the reading is asked for, before waiting for it.
+export const intervalNow = (tracker: Tracker): Interval => intervalOf(tracker.gold, tracker.active)
+
 // A reading of the session's cost closes an interval: the change since the last reading is split between the
-// classes of the operations that finished in it, or goes to the active class when none did.
-export const costMeasured = (tracker: Tracker, usd: unknown): Tracker => {
-  const gold = goldMeasured(tracker.gold, usd, tracker.active)
+// classes of the operations that finished in it (`taken`, by default those so far), or goes to the active class
+// when none did.
+export const costMeasured = (tracker: Tracker, usd: unknown, taken: Interval = intervalNow(tracker)): Tracker => {
+  const gold = goldMeasured(tracker.gold, usd, taken.active, taken.ops)
 
   return gold === tracker.gold ? tracker : { ...tracker, gold }
 }
