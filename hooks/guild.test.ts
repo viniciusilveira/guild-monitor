@@ -123,5 +123,6 @@ test('a failing shell command or edit is not a rejection', async () => {
   expect(isRejection({ tool: 'Bash', isError: true, text: 'Exit code 1\nnpm ERR! test failed' })).toBe(false)
   expect(isRejection({ tool: 'Bash', isError: true, text: 'Exit code 1\n ! [rejected] main -> main (non-fast-forward)' })).toBe(false)
   expect(isRejection({ tool: 'Edit', isError: true, text: 'String to replace not found in file.' })).toBe(false)
+  expect(isRejection({ tool: 'Bash', isError: true, text: 'Exit code 126\nPermission denied' })).toBe(false)
   expect(isRejection({ tool: 'Bash', isError: true })).toBe(false)
 })

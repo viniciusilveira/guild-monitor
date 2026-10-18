@@ -301,7 +301,7 @@ export const register: Register = (on, options) => {
         program: use.command === undefined ? undefined : programOf(use.command),
         kind: kindOf(use),
         shown: tracker.active,
-        paid: done.gain?.cls ?? (ran.isError === true || rejected ? undefined : classOf(use, tracker.planMode)),
+        paid: done.gain?.cls ?? (ran.isError === true ? undefined : classOf(use, tracker.planMode)),
         planMode: tracker.planMode,
         isError: ran.isError === true && !rejected ? true : undefined,
         rejected: rejected ? true : undefined,
