@@ -51,7 +51,8 @@ let sessionStart = 0
 let nextLimits: unknown[] = []
 let limits: unknown[] = []
 // A test that moves the time itself (`jump`) instead of letting a fake clock tick through it: `nextFast` before
-// `setup`, then `fakeNow` is what `$.clock.now()` answers and no tick runs.
+// `setup`, then `fakeNow` is what `$.clock.now()` answers. The engine still calls the `clock.every` callback of the
+// plugin in a loop, but it reads `limits`, which is empty in these tests: the readings come only from `jump`.
 let nextFast = false
 let isFast = false
 let fakeNow = 0
