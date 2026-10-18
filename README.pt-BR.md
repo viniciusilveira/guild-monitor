@@ -114,6 +114,7 @@ Ele abre sozinho a partir de 144 colunas (110 depois que você mesmo o abriu), a
 |---|---|
 | `/guild panel` | abre o painel lateral e passa a abri-lo sempre |
 | `/guild bar` | fecha o painel e volta à barra inferior |
+| `/guild trace [N\|clear]` | mostra o registro das últimas N chamadas de ferramenta (padrão 20): quem estava em cena, quem ganhou o XP e um resumo; `clear` apaga. Só nomes e classes são guardados, nunca prompts nem caminhos |
 | `/guild <cena>` | mostra uma cena de demonstração (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` volta à sessão real |
 
 ## Requisitos
