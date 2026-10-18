@@ -1,0 +1,11 @@
+{
+  "name": "guild-monitor",
+  "private": true,
+  "description": "Development tooling only: the plugin itself has no runtime dependencies.",
+  "scripts": {
+    "verify": "scripts/verify"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

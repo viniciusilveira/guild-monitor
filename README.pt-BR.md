@@ -187,14 +187,23 @@ Não precisa reiniciar para trocar de cena: digite `/guild bug` (ou qualquer out
 
 ## Desenvolvimento
 
+Para conferir uma mudança, rode o comando único que o CI também roda (`npm ci` uma vez para instalar o TypeScript fixado):
+
 ```sh
-claude plugin test .       # testes unitários dos módulos puros
+scripts/verify             # tipos, testes e validação do plugin; para na primeira falha
+```
+
+Os passos, um a um:
+
+```sh
+claude plugin test .       # testes unitários dos módulos puros e do que a banda e o painel mostram
 claude plugin validate .   # checagem do manifesto e dos hooks
 tsc -p .                   # checagem de tipos (veja abaixo)
 node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a partir de art/
 ```
 
-- `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela.
+- `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
+- `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
 - Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# One answer to "is this change good": type check, unit tests and plugin validation,
+# in that order, stopping at the first failure. People, agents and CI run the same thing.
+#
+# Each step can be replaced through an environment variable, which the script's own
+# tests use to check the order (the default test step also runs those script tests): VERIFY_TYPES_CMD, VERIFY_TEST_CMD, VERIFY_VALIDATE_CMD.
+# The engine writes the type declarations when it loads the plugin in a session, so a
+# machine that never did (CI) skips the type check explicitly with VERIFY_SKIP_TYPES=1.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+types_cmd="${VERIFY_TYPES_CMD:-npx --no-install tsc -p .}"
+test_cmd="${VERIFY_TEST_CMD:-claude plugin test . && scripts/verify.test.sh all}"
+validate_cmd="${VERIFY_VALIDATE_CMD:-claude plugin validate .}"
+
+step() {
+  echo "==> $1"
+  shift
+  bash -c "$*"
+}
+
+if [ "${VERIFY_SKIP_TYPES:-0}" = "1" ]; then
+  echo "==> types (skipped: VERIFY_SKIP_TYPES=1)"
+elif [ -z "${VERIFY_TYPES_CMD:-}" ] && [ ! -e .claude-plugin/types/tsconfig.json ]; then
+  echo "verify: the engine type declarations are missing in .claude-plugin/types." >&2
+  echo "        Load the plugin once in a Claude Code session, or set VERIFY_SKIP_TYPES=1." >&2
+  exit 1
+else
+  step types "$types_cmd"
+fi
+
+step tests "$test_cmd"
+step validate "$validate_cmd"
+echo "verify: ok"
