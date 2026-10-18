@@ -415,10 +415,18 @@ test('screen doing: no store write ever carries the target', { options: { layout
     call($, 'Edit', { file_path: '/home/x/privado/register.tsx', old_string: 'a', new_string: 'b' }),
     call($, 'Write', { file_path: 'a.ts', content: 'c' }),
     call($, 'NotebookEdit', { notebook_path: '/home/x/privado/lab.ipynb' }),
-    call($, 'Bash', { command: 'curl https://segredo.example/token' }),
+    call($, 'Bash', { command: 'curl -u admin:hunter2 https://segredo.example/token' }),
   ]
   for (const tool of ['Edit', 'Write', 'NotebookEdit', 'Bash']) await arrived(tool)
-  expect(await panelShows($, /curl https/)).toBe(true)
+  expect(await panelShows($, /: executando curl…$/)).toBe(true)
+  // The screen itself (panel and band) never carries a secret of the command either.
+  const secret = /hunter2|admin|segredo|token|https/
+  const panel = await mountPanel($)
+  expect((await panel.findAll({ type: 'Text' })).map(item => item.text).join('\n')).not.toMatch(secret)
+  await panel.unmount()
+  const band = await mountBand($)
+  expect((await band.findAll({ type: 'Text' })).map(item => item.text).join('\n')).not.toMatch(secret)
+  await band.unmount()
 
   for (const done of release) done()
   await Promise.all(running)
@@ -428,7 +436,7 @@ test('screen doing: no store write ever carries the target', { options: { layout
   expect(writes.length).toBeGreaterThan(0)
   expect(toasts.length).toBeGreaterThan(0)
   expect(new Set(writes.map(write => (JSON.parse(write) as [string])[0]))).toEqual(new Set(['guild.trace.v1', 'guild.v1']))
-  expect(everything).not.toMatch(/register|privado|segredo|token|curl https|lab\.ipynb|a\.ts/)
+  expect(everything).not.toMatch(/register|privado|segredo|token|hunter2|admin|https|lab\.ipynb|a\.ts/)
 })
 
 test('screen doing: the line is the first text of the panel and of the band stats', { options: { layout: 'bar' } }, async ($, on) => {

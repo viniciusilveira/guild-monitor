@@ -31,14 +31,48 @@ const FALLBACK_VERB = 'executando'
 export const verbOf = (tool: string): string => VERBS[tool] ?? FALLBACK_VERB
 
 export const MAX_TARGET = 24
-const COMMAND_WORDS = 3
 const FILE_FIELDS = ['file_path', 'notebook_path']
 const FILE_TOOLS = new Set(['Read', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'NotebookRead'])
 
 const cut = (text: string): string => (text.length > MAX_TARGET ? `${text.slice(0, MAX_TARGET - 1)}…` : text)
 
-// What the line shows after the verb: the file name without its directory, or the first words of a
-// shell command, cut with an ellipsis. Nothing else is shown, and nothing here is ever saved.
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+const PROGRAM_NAME = /^[A-Za-z0-9._+-]{1,30}$/
+// A subcommand (`git commit`, `npm test`): letters and hyphens only. Anything with a digit, `=`, `:`, `/`, `@`,
+// `.`, a leading `-` or a quote can be a value (a token, a password, a URL) and is never shown.
+const SUBCOMMAND = /^[A-Za-z][A-Za-z-]{0,19}$/
+
+// What a shell command shows: the program (no path) and at most a plain subcommand after it. Leading
+// `NAME=value` words, `env` with its assignments and flags, and everything else of the command (flags, values,
+// URLs, credentials) are left out, because the target is drawn on a screen that may be shared. A cut is marked `…`.
+const commandTarget = (command: string): string | undefined => {
+  const words = command.trim().split(/\s+/).filter(Boolean)
+  let at = 0
+  let inEnv = false
+
+  while (at < words.length) {
+    const word = words[at] ?? ''
+    if (ASSIGNMENT.test(word) || (inEnv && word.startsWith('-'))) at += 1
+    else if (word === 'env' && !inEnv) {
+      inEnv = true
+      at += 1
+    } else break
+  }
+
+  // `env` alone (or with only assignments and flags) is the program.
+  const program = (words[at] ?? (inEnv ? 'env' : '')).split('/').pop() ?? ''
+  if (!PROGRAM_NAME.test(program)) return undefined
+
+  const second = words[at + 1]
+  const shown = second !== undefined && SUBCOMMAND.test(second) ? `${program} ${second}` : program
+  const used = words[at] === undefined ? at : at + (shown === program ? 1 : 2)
+  const omitted = used < words.length || (at > 0 && words[at] !== undefined)
+
+  return cut(omitted ? `${shown}…` : shown)
+}
+
+// What the line shows after the verb: the file name without its directory, or the program (and a
+// plain subcommand) of a shell command, cut with an ellipsis. Nothing else is shown, and nothing here is ever saved.
 export const targetOf = (tool: string, input: Record<string, unknown>): string | undefined => {
   if (FILE_TOOLS.has(tool)) {
     const path = FILE_FIELDS.map(field => input[field]).find((value): value is string => typeof value === 'string')
@@ -47,16 +81,7 @@ export const targetOf = (tool: string, input: Record<string, unknown>): string |
     return name === undefined ? undefined : cut(name)
   }
 
-  if (tool === 'Bash' && typeof input.command === 'string') {
-    const words = input.command.trim().split(/\s+/).filter(Boolean)
-    if (words.length === 0) return undefined
-
-    const head = words.slice(0, COMMAND_WORDS).join(' ')
-    // Words left out of the line are marked, so a cut never looks like the whole command.
-    const text = words.length > COMMAND_WORDS ? `${head}…` : head
-
-    return text.length > MAX_TARGET ? cut(text) : text
-  }
+  if (tool === 'Bash' && typeof input.command === 'string') return commandTarget(input.command)
 
   return undefined
 }
