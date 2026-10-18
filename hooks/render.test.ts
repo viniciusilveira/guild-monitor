@@ -2169,3 +2169,26 @@ test('meters C22: a scheme scene walks the three levels of HP', { options: { lay
     expect(await hp()).toBe(seen[0])
   }
 })
+
+test('meters C24: during a scheme scene the answer says the saved scheme waits for /guild off', { options: { layout: 'bar' } }, async ($, on) => {
+  WITH_FIGURES()
+  const prefs = preferences()
+  await startWith($, on, prefs)
+
+  // Out of a scene the answer is the plain one.
+  expect(await reply($, ' padrao')).toBe('Esquema dos medidores: padrao (salvo)')
+
+  await $.command.run({ command: 'guild', args: 'esquema-contraste' } as never)
+  expect(await reply($, ' daltonico')).toBe('Esquema dos medidores: daltonico (salvo), mas a cena esquema-contraste mostra o esquema dela até /guild off')
+  expect(prefs.held[UI_KEY]).toEqual({ meters: 'daltonico' })
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.contraste.hpHigh)
+
+  // The scene's own scheme needs no warning, and a scene of the figures never forces one.
+  expect(await reply($, ' contraste')).toBe('Esquema dos medidores: contraste (salvo)')
+  await $.command.run({ command: 'guild', args: 'bug' } as never)
+  expect(await reply($, ' padrao')).toBe('Esquema dos medidores: padrao (salvo)')
+
+  await $.command.run({ command: 'guild', args: 'esquema-contraste' } as never)
+  await $.command.run({ command: 'guild', args: 'off' } as never)
+  expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.padrao.hpHigh)
+})

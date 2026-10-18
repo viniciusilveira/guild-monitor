@@ -308,7 +308,11 @@ export const register: Register = (on, options) => {
       await saveUi($, METER_CHOICES.field, meters)
       await update($, metersAtom, () => meters)
 
-      return { text: savedText(METER_CHOICES, meters) }
+      // A scheme scene keeps its own scheme on screen: the choice is saved, and the answer says it is not showing yet.
+      const forced = scene === undefined ? undefined : schemeOfScene(scene)
+      const note = forced !== undefined && forced !== meters ? `, mas a cena ${scene} mostra o esquema dela até /guild off` : ''
+
+      return { text: `${savedText(METER_CHOICES, meters)}${note}` }
     }
 
     const choice = choiceOf(e.args)
