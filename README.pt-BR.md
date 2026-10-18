@@ -97,6 +97,16 @@ Uma linha no topo do painel lateral (e no topo dos status na barra inferior, qua
 - Num painel estreito a linha abre mão do nome, depois do alvo, e termina só com o verbo.
 - As cenas de demonstração `explorador`, `mago`, `guerreiro` e `bug` mostram uma chamada em andamento; `cansado` e `dormindo` mostram o repouso. As capturas abaixo são anteriores a essa linha e não a mostram.
 
+## Timers de sessão e de turno
+
+O painel lateral mostra dois timers, logo acima das últimas operações: `sessão 1h05` (há quanto tempo a sessão está aberta) e `turno 32s` (há quanto tempo o turno atual roda). O formato é curto: `32s` abaixo de um minuto, `4min` abaixo de uma hora, `1h05` depois disso.
+
+- **Timer da sessão.** Conta a partir do início real da sessão, informado pelo engine: uma sessão retomada conta desde o primeiro início, e o `/clear` recomeça a conta (o novo início é lido em até 2 segundos). Mostra `--` enquanto o início é desconhecido.
+- **Timer do turno.** Roda do seu prompt até a resposta; então para e guarda a duração final, a que o engine informa quando o turno termina (não uma subtração local), até o próximo turno começar. Mostra `--` antes do primeiro turno. Um turno interrompido ou com erro também guarda a duração.
+- **Barra inferior.** Mostra só o timer do turno, na linha do ouro (`ouro $1.50 · turno 32s`), e só enquanto um turno roda, de modo que as 8 linhas da barra compacta continuam valendo.
+- **Redesenho.** Os timers ficam em segundos inteiros, então a view muda (e o painel redesenha) uma vez por segundo, não a cada quadro da animação. Nada disso é salvo no store, no registro do `/guild trace` nem em toast.
+- **Cenas de demonstração.** Todas mostram os dois timers: `explorador`, `mago`, `guerreiro` e `bug` com uma sessão aberta há `1h05` e um turno rodando há `32s`; `cansado` e `dormindo` com `1h05` e os `4min` do último turno.
+
 ## Painel lateral
 
 Num terminal largo, no layout de tela cheia do Claude Code (`/tui fullscreen`, 110 colunas ou mais), a guilda abre como um **painel à esquerda da conversa**:

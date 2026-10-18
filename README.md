@@ -97,6 +97,16 @@ A line at the top of the side panel (and at the top of the stats in the bottom b
 - In a narrow panel the line gives up the name, then the target, and ends as the verb alone.
 - The demo scenes `explorador`, `mago`, `guerreiro` and `bug` show a call in progress; `cansado` and `dormindo` show the resting state. The screenshots below were taken before this line existed and do not show it.
 
+## Session and turn timers
+
+The side panel shows two timers, just above the latest operations: `sessão 1h05` (how long the session has been open) and `turno 32s` (how long the current turn has run). The labels are in Portuguese, like the rest of the interface, and the format is short: `32s` under a minute, `4min` under an hour, `1h05` after that.
+
+- **Session timer.** It counts from the session's real start, which the engine reports: a resumed session counts from its first launch, and `/clear` starts it over (the new start is picked up within 2 seconds). It reads `--` while the start is unknown.
+- **Turn timer.** It runs from your prompt until the answer, then stops and keeps the final duration, the one the engine reports when the turn completes (not a local subtraction), until the next turn begins. It reads `--` before the first turn. An interrupted or failed turn keeps its duration too.
+- **Bottom band.** It shows only the turn timer, on the gold line (`ouro $1.50 · turno 32s`), and only while a turn runs, so the compact band's 8 lines still hold.
+- **Redraws.** The timers are kept in whole seconds, so the view changes (and the panel redraws) once per second, not at every animation frame. Nothing about them is saved to the store, the `/guild trace` log or a toast.
+- **Demo scenes.** All of them show both timers: `explorador`, `mago`, `guerreiro` and `bug` with a session open for `1h05` and a turn running for `32s`; `cansado` and `dormindo` with `1h05` and the last turn's `4min`.
+
 ## Side panel
 
 On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 columns or more), the guild opens as a **panel to the left of the conversation**:
