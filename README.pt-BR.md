@@ -2,7 +2,7 @@
 
 [English](README.md) · **Português**
 
-Um mod do [Claude Code](https://claude.com/claude-code) que transforma o monitor da sessão num pequeno RPG. Uma guilda de três personagens em pixel art vive acima do prompt, trabalha enquanto o agente trabalha e sobe de nível conforme as tarefas são concluídas. Seus limites de uso, a janela de contexto e o custo aparecem como medidores de jogo.
+Um mod do [Claude Code](https://claude.com/claude-code) que transforma o monitor da sessão num pequeno RPG. Uma guilda de três personagens em pixel art vive num painel lateral (ou numa barra acima do prompt), trabalha enquanto o agente trabalha e sobe de nível conforme as tarefas são concluídas. Seus limites de uso, a janela de contexto e o custo aparecem como medidores de jogo.
 
 > **Sem afiliação com a Anthropic.** O mascote laranja é uma homenagem de fã ao mascote do Claude Code. "Claude" e "Claude Code" são marcas da Anthropic.
 
@@ -86,11 +86,28 @@ O nível `n` começa em `40 × (n − 1)²` de XP: nível 2 com 40, nível 3 com
 
 Quando uma chamada de ferramenta falha, o bug aparece embaixo dos status do personagem ativo. Uma chamada bem-sucedida **do mesmo tipo** depois dele o derrota (em comandos de shell, o mesmo programa e subcomando: `npm test`, `git push`; nas demais ferramentas, a mesma ferramenta). Chamadas recusadas por permissão ou por um hook não contam como falha.
 
+## Painel lateral
+
+Num terminal largo, no layout de tela cheia do Claude Code (`/tui fullscreen`, 110 colunas ou mais), a guilda abre como um **painel à esquerda da conversa**:
+
+- o personagem ativo em tamanho cheio, com os status **ao lado**, e o bug logo embaixo dos status quando uma chamada de ferramenta falha;
+- os outros dois personagens embaixo, e a lista das **últimas pagas de XP** (`3min Guerreiro +6 Edit`);
+- a largura é sua: arraste a borda do painel e o layout acompanha (os status descem para baixo do personagem quando estreito, depois o personagem encolhe);
+- o botão **recolher** fecha o painel e traz a barra inferior de volta; `/guild panel` abre de novo.
+
+Ele abre sozinho a partir de 144 colunas (110 depois que você mesmo o abriu), a não ser que você o tenha fechado: a escolha fica guardada. Onde não há espaço (terminal estreito ou o layout clássico, sem tela cheia), a guilda continua como a barra acima do prompt, então nunca fica sem guilda.
+
+| Comando | Faz |
+|---|---|
+| `/guild panel` | abre o painel lateral e passa a abri-lo sempre |
+| `/guild bar` | fecha o painel e volta à barra inferior |
+| `/guild <cena>` | mostra uma cena de demonstração (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` volta à sessão real |
+
 ## Requisitos
 
 - Claude Code com suporte a mods. Desenvolvido e testado na **2.1.302**.
 - Terminal com truecolor. Testado no **iTerm2** (macOS) e no **foot** (Linux), com e sem **tmux** (use `set -ga terminal-features ",*:RGB"` ou `Tc` se as cores ficarem apagadas).
-- 16 linhas livres acima do prompt para a banda em tamanho cheio (a reduzida usa 8).
+- Para o painel lateral: o layout de tela cheia (`/tui fullscreen`) e 110 colunas ou mais. Para a barra inferior: 16 linhas livres acima do prompt (a reduzida usa 8).
 
 ## Instalação
 
@@ -125,6 +142,7 @@ Reinicie o Claude Code e a guilda aparece acima do prompt.
 | `sleepAfterSeconds` | `90` | tempo ocioso depois do qual a guilda dorme |
 | `tiredAtPercent` | `75` | preenchimento do contexto em que todos ficam cansados |
 | `bandSize` | `full` | `full`: personagem ativo em tamanho cheio (16 linhas); `compact`: todos reduzidos (8 linhas) |
+| `layout` | `auto` | `auto`: painel lateral onde couber, barra inferior no resto; `bar`: só a barra; `panel`: só o painel |
 | `demo` | `off` | uma cena fixa com valores fictícios: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo` |
 
 Defina-as na instalação (`claude plugin install … --config bandSize=compact`), com `claude plugin configure guild-monitor` ou em `/plugin`.
@@ -169,7 +187,6 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 ## Roadmap
 
-- Painel `/monitor` com os três personagens em tamanho cheio, XP por classe, custo e as últimas operações.
 - Uma linha de status curta para quando a banda estiver escondida.
 
 ## Licença
