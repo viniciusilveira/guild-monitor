@@ -172,6 +172,23 @@ subagentes input 30k · output 4,1k · cache 38%
 - **Só em memória.** Nada vai ao store, ao registro do `/guild trace` nem a toast, e tudo recomeça com a sessão.
 - **Cenas de demonstração.** Todas mostram valores fictícios: `tokens  input 142k · output 18k · cache 87%`, `sessão  input 1,2M · output 96k · cache 91%` e `subagentes input 30k · output 4,1k · cache 38%` (esta em vermelho, para mostrar a taxa baixa), com o modelo `sonnet-5-5` ao lado do nome. Enquanto uma cena roda, o consumo real é ignorado.
 
+## Esquemas de cores dos medidores
+
+Os medidores e as linhas de texto podem usar um de três esquemas de cores, independentes das cores dos personagens:
+
+| Esquema | O que é |
+|---|---|
+| `padrao` | as cores de sempre (HP verde, amarelo e vermelho; MP azul; ST laranja; XP roxo; ouro amarelo; desconhecido cinza) |
+| `contraste` | alto contraste: cores vivas com pelo menos 7:1 contra o preto (WCAG AAA) |
+| `daltonico` | não depende de verde contra vermelho: a paleta [Okabe-Ito](https://jfly.uni-koeln.de/color/), feita para ser distinguida com protanopia, deuteranopia e tritanopia. Os três níveis de HP também diferem em luminosidade (azul claro, azul-céu, vermelhão), então o HP se lê sem distinguir matizes |
+
+- **Opção e comando.** A opção `meters` define o esquema (`padrao`, `contraste` ou `daltonico`; padrão `padrao`). `/guild meters NOME` troca na hora, **salva a escolha** para as próximas sessões e responde `Esquema dos medidores: NOME (salvo)`; `/guild meters` sem nome lista os esquemas com o atual marcado `(atual)`; um nome desconhecido não muda nada e mostra os válidos. A escolha salva vale mais que a opção; sem escolha salva vale a opção. Durante uma cena de demonstração `esquema-*` a cena mantém o esquema dela na tela: `/guild meters` ainda salva, e a resposta avisa que o salvo aparece depois de `/guild off`.
+- **Onde vale.** A barra, o painel lateral e as cenas de demonstração: os medidores, as linhas de previsão e de tokens, os contadores e o aviso do bug. As cores das classes (nome, o que o personagem faz, ouro por classe, últimas operações) e os sprites não mudam.
+- **O cinza de desconhecido.** O `--` de um valor que ninguém informou mantém um cinza que continua distinguível em todos os esquemas.
+- **Cenas de demonstração.** `esquema-padrao`, `esquema-contraste` e `esquema-daltonico` (`/guild esquema-daltonico`) mostram o guerreiro trabalhando naquele esquema, seja qual for o salvo, e não salvam nada; o HP passa por 72%, 38% e 15% a cada 3 segundos, então os três níveis de HP aparecem. `/guild off` volta à sessão real e ao esquema salvo.
+- **Privacidade.** Só o nome do esquema é salvo, junto com o estado aberto/fechado do painel, nas preferências da interface; nunca dado de sessão.
+- **Nota de acessibilidade.** O esquema `daltonico` é verificado por testes contra os tipos comuns de daltonismo (protanopia, deuteranopia, tritanopia, simulados com o modelo de Machado, Oliveira e Fernandes, 2009): dois medidores nunca ficam mais próximos que uma distância de cor definida, e os três níveis de HP diferem em luminância. Toda cor do `daltonico` também mantém pelo menos 4,5:1 contra o preto (WCAG AA), verificado por teste; por isso o MP é um azul Okabe-Ito clareado e o valor desconhecido um cinza claro. Os esquemas supõem fundo escuro no terminal.
+
 ## Painel lateral
 
 Num terminal largo, no layout de tela cheia do Claude Code (`/tui fullscreen`, 110 colunas ou mais), a guilda abre como um **painel à esquerda da conversa**:
@@ -201,7 +218,8 @@ Ele abre sozinho a partir de 144 colunas (110 depois que você mesmo o abriu), a
 | `/guild panel` | abre o painel lateral e passa a abri-lo sempre |
 | `/guild bar` | fecha o painel e volta à barra inferior |
 | `/guild trace [N\|clear]` | mostra o registro das últimas N chamadas de ferramenta (padrão 20): quem estava em cena, quem ganhou o XP (`ERRO` marca uma falha, `RECUSADA` uma chamada que você recusou) e um resumo; `clear` apaga. Só nomes de ferramenta, classes e o nome do programa de um comando de shell são guardados, nunca prompts, caminhos, argumentos nem variáveis |
-| `/guild <cena>` | mostra uma cena de demonstração (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` volta à sessão real |
+| `/guild meters [nome]` | troca na hora o esquema de cores dos medidores (`padrao`, `contraste`, `daltonico`) e o guarda para as próximas sessões; sem nome, lista os esquemas |
+| `/guild <cena>` | mostra uma cena de demonstração (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, `esquema-padrao`, `esquema-contraste`, `esquema-daltonico`); `/guild off` volta à sessão real |
 
 ## Requisitos
 
@@ -243,7 +261,8 @@ Reinicie o Claude Code e a guilda aparece acima do prompt.
 | `tiredAtPercent` | `75` | preenchimento do contexto em que todos ficam cansados |
 | `bandSize` | `full` | `full`: personagem ativo em tamanho cheio (16 linhas); `compact`: todos reduzidos (8 linhas) |
 | `layout` | `auto` | `auto`: painel lateral onde couber, barra inferior no resto; `bar`: só a barra; `panel`: só o painel |
-| `demo` | `off` | uma cena fixa com valores fictícios: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo` |
+| `meters` | `padrao` | esquema de cores dos medidores: `padrao`, `contraste` (alto contraste) ou `daltonico` (para daltonismo); o salvo com `/guild meters` vale mais |
+| `demo` | `off` | uma cena fixa com valores fictícios: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, ou uma por esquema de cores: `esquema-padrao`, `esquema-contraste`, `esquema-daltonico` |
 | `showForecast` | `on` | `on`: mostra quando as janelas de 5 horas e de 7 dias se esgotam no ritmo atual; `off`: esconde a previsão |
 
 Defina-as na instalação (`claude plugin install … --config bandSize=compact`), com `claude plugin configure guild-monitor` ou em `/plugin`.
@@ -291,7 +310,7 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 - `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
 - `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
-- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `gold.ts` (ouro por classe), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
+- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `gold.ts` (ouro por classe), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`, `schemes.ts` (esquemas de cores dos medidores), `choices.ts` (escolhas nomeadas guardadas entre sessões). Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).
 

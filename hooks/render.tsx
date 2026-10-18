@@ -10,7 +10,8 @@ import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
 import { STATS_COLUMNS } from './sidebar'
 import { modelFit, tokenText } from './tokens'
-import { agoText, bandForecast, bar, COLORS, costText, durationText, fitForecast, healthColor, METER_COLORS, NAMES, TOKENS_COLOR, percentText, restText, untilReset, URGENT_COLOR } from './view'
+import type { MeterColors } from './schemes'
+import { agoText, bandForecast, bar, COLORS, costText, durationText, fitForecast, healthColor, NAMES, percentText, restText, untilReset } from './view'
 
 // The cells of one Raster, given its key, who it draws and at what size. The
 // caller keeps track of what it handed out, to animate it later.
@@ -21,6 +22,8 @@ export type BandArgs = {
   layout: Layout
   now: number
   cellsFor: CellsFor
+  // The colors of the meters' scheme in use.
+  colors: MeterColors
 }
 
 type Char = ViewModel['chars'][number]
@@ -42,7 +45,7 @@ const seconds = (value: number | null): string => (value === null ? '--' : durat
 
 // The lines of the active character's stats, each in the color of its meter. What the character does (or
 // that it rests, is tired or sleeps) is the line above them, so the stats do not repeat it.
-const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number, width: number, turnTimer = false) => {
+const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number, width: number, colors: MeterColors, turnTimer = false) => {
   const { Box, Text } = ui
   const xpPercent = active.xpNeeded > 0 ? Math.round((active.xpInLevel / active.xpNeeded) * 100) : 0
   const reset = untilReset(view.manaResetsAt, now)
@@ -56,15 +59,15 @@ const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now:
       </Text>
       {model !== null && <Text dimColor>{model}</Text>}
     </Box>,
-    <Text key="xp" color={METER_COLORS.xp}>{`XP ${bar(xpPercent)} ${active.xpInLevel}/${active.xpNeeded}`}</Text>,
-    <Text key="hp" color={healthColor(view.hp)}>{`HP ${bar(view.hp)} ${percentText(view.hp)}`}</Text>,
-    <Text key="mp" color={view.mana === null ? METER_COLORS.unknown : METER_COLORS.mana}>
+    <Text key="xp" color={colors.xp}>{`XP ${bar(xpPercent)} ${active.xpInLevel}/${active.xpNeeded}`}</Text>,
+    <Text key="hp" color={healthColor(view.hp, colors)}>{`HP ${bar(view.hp)} ${percentText(view.hp)}`}</Text>,
+    <Text key="mp" color={view.mana === null ? colors.unknown : colors.mana}>
       {`MP ${bar(view.mana)} ${percentText(view.mana)}${reset === '' ? '' : ` ${reset}`}`}
     </Text>,
-    <Text key="st" color={view.stamina === null ? METER_COLORS.unknown : METER_COLORS.stamina}>
+    <Text key="st" color={view.stamina === null ? colors.unknown : colors.stamina}>
       {`ST ${bar(view.stamina)} ${percentText(view.stamina)}`}
     </Text>,
-    <Text key="gold" color={view.costUsd === null ? METER_COLORS.unknown : METER_COLORS.gold}>
+    <Text key="gold" color={view.costUsd === null ? colors.unknown : colors.gold}>
       {`ouro ${costText(view.costUsd)}${turnTimer && view.working && view.turnSeconds !== null ? ` · turno ${seconds(view.turnSeconds)}` : ''}`}
     </Text>,
   ]
@@ -72,10 +75,10 @@ const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now:
 
 type Forecast = NonNullable<ViewModel['forecast']['fiveHour']>
 
-const forecastColors = (forecast: Forecast) => (forecast.urgent ? { color: URGENT_COLOR } : { dimColor: true })
+const forecastColors = (forecast: Forecast, colors: MeterColors) => (forecast.urgent ? { color: colors.urgent } : { dimColor: true })
 
 // The panel's lines, one per window that has something to say: 5h first, the nearer one.
-const forecastLines = (ui: Elements['terminal'], view: ViewModel, width: number) => {
+const forecastLines = (ui: Elements['terminal'], view: ViewModel, width: number, colors: MeterColors) => {
   const { Text } = ui
   const windows = [
     { key: 'forecast-5h', label: '5h', forecast: view.forecast.fiveHour },
@@ -88,7 +91,7 @@ const forecastLines = (ui: Elements['terminal'], view: ViewModel, width: number)
     return forecast === null || text === null
       ? []
       : [
-          <Text key={key} {...forecastColors(forecast)}>
+          <Text key={key} {...forecastColors(forecast, colors)}>
             {text}
           </Text>,
         ]
@@ -96,13 +99,13 @@ const forecastLines = (ui: Elements['terminal'], view: ViewModel, width: number)
 }
 
 // The band's one line for the windows, or nothing.
-const bandForecastLine = (ui: Elements['terminal'], view: ViewModel) => {
+const bandForecastLine = (ui: Elements['terminal'], view: ViewModel, colors: MeterColors) => {
   const { Text } = ui
   const chosen = bandForecast(view.forecast)
   const text = chosen === null ? null : fitForecast(chosen.label, chosen.line, INFO_COLUMNS)
 
   return chosen === null || text === null ? null : (
-    <Text key="forecast" {...forecastColors(chosen.line)}>
+    <Text key="forecast" {...forecastColors(chosen.line, colors)}>
       {text}
     </Text>
   )
@@ -110,7 +113,7 @@ const bandForecastLine = (ui: Elements['terminal'], view: ViewModel) => {
 
 // The panel's lines of tokens: the last turn, the session and the subagents, each only when it has something to
 // say; a low cache hit rate is red. None at all before a turn reports usage.
-const tokenLines = (ui: Elements['terminal'], view: ViewModel, width: number) => {
+const tokenLines = (ui: Elements['terminal'], view: ViewModel, width: number, colors: MeterColors) => {
   const { Text } = ui
   const rows = [
     { key: 'tokens-turn', label: 'tokens', line: view.tokens?.turn ?? null },
@@ -124,7 +127,7 @@ const tokenLines = (ui: Elements['terminal'], view: ViewModel, width: number) =>
     return line === null || text === null
       ? []
       : [
-          <Text key={key} color={line.low ? URGENT_COLOR : TOKENS_COLOR}>
+          <Text key={key} color={line.low ? colors.urgent : colors.tokens}>
             {text}
           </Text>,
         ]
@@ -155,7 +158,7 @@ const goldLines = (ui: Elements['terminal'], view: ViewModel, width: number) => 
 // two characters and, when a tool is failing, the bug.
 export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
   const { Box, Text, Raster } = ui
-  const { view, layout, now, cellsFor } = args
+  const { view, layout, now, cellsFor, colors } = args
   const active = view.chars.find(char => char.cls === view.active) ?? view.chars[0]
   if (active === undefined) return undefined
 
@@ -163,7 +166,7 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
   const mini = CELLS.mini
   // One line for the windows. With a full character it follows the stats; with a reduced one (8 rows) it takes
   // the legend's line, and the bug's warning comes before it.
-  const forecast = bandForecastLine(ui, view)
+  const forecast = bandForecastLine(ui, view, colors)
 
   return (
     <Box flexDirection="row" alignItems="flex-end" gap={1}>
@@ -176,12 +179,12 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
       {layout.info && (
         <Box flexDirection="column" width={INFO_COLUMNS} alignSelf="flex-start">
           {doingText(ui, view, active, INFO_COLUMNS)}
-          {statLines(ui, view, active, now, INFO_COLUMNS, true)}
+          {statLines(ui, view, active, now, INFO_COLUMNS, colors, true)}
           {layout.active === 'full' && forecast}
           {layout.bugBelow ? (
             <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
           ) : view.bug !== 'none' && !layout.bug ? (
-            <Text color="red">bug na área!</Text>
+            <Text color={colors.alert}>bug na área!</Text>
           ) : layout.active === 'mini' && forecast !== null ? (
             forecast
           ) : (
@@ -206,7 +209,7 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
       {layout.bug && (
         <Box flexDirection="column">
           <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
-          <Text color="red">Bug</Text>
+          <Text color={colors.alert}>Bug</Text>
         </Box>
       )}
     </Box>
@@ -220,6 +223,7 @@ export type SidebarArgs = {
   layout: SidebarLayout
   now: number
   cellsFor: CellsFor
+  colors: MeterColors
 }
 
 const HISTORY_ROWS = 8
@@ -228,7 +232,7 @@ const HISTORY_ROWS = 8
 // latest XP payments at the bottom. The engine scrolls what does not fit.
 export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
   const { Box, Text, Raster } = ui
-  const { view, columns, layout, now, cellsFor } = args
+  const { view, columns, layout, now, cellsFor, colors } = args
   const active = view.chars.find(char => char.cls === view.active) ?? view.chars[0]
   if (active === undefined) return undefined
 
@@ -264,16 +268,16 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
         )}
         {layout.stats === 'beside' && (
           <Box flexDirection="column" width={STATS_COLUMNS} alignSelf="flex-start">
-            {statLines(ui, view, active, now, STATS_COLUMNS)}
+            {statLines(ui, view, active, now, STATS_COLUMNS, colors)}
             {legend}
-            {forecastLines(ui, view, STATS_COLUMNS)}
+            {forecastLines(ui, view, STATS_COLUMNS, colors)}
             {bugUnderStats && bugBox}
           </Box>
         )}
       </Box>
-      {layout.stats === 'below' && statLines(ui, view, active, now, columns)}
+      {layout.stats === 'below' && statLines(ui, view, active, now, columns, colors)}
       {layout.stats === 'below' && legend}
-      {layout.stats === 'below' && forecastLines(ui, view, columns)}
+      {layout.stats === 'below' && forecastLines(ui, view, columns, colors)}
       {layout.bug && !bugUnderStats && bugBox}
       {layout.others !== null && (
         <Box flexDirection={layout.others === 'row' ? 'row' : 'column'} gap={1}>
@@ -290,11 +294,11 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
           ))}
         </Box>
       )}
-      <Text key="counters" color={METER_COLORS.gold}>{counterLine(counterSegments(view.counters))}</Text>
+      <Text key="counters" color={colors.gold}>{counterLine(counterSegments(view.counters))}</Text>
       {goldLines(ui, view, columns)}
       <Text key="session-time" dimColor>{`sessão ${seconds(view.sessionSeconds)}`}</Text>
       <Text key="turn-time" dimColor>{`turno ${seconds(view.turnSeconds)}`}</Text>
-      {tokenLines(ui, view, columns)}
+      {tokenLines(ui, view, columns, colors)}
       <Text dimColor>Últimas operações</Text>
       {history.length === 0 && <Text dimColor>nenhuma ainda</Text>}
       {history.map((entry, i) => (

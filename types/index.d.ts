@@ -77,6 +77,6 @@ export type TokenLine = { input: number; output: number; cache: number | null; l
 
 declare module 'claude-code' {
   interface PluginState {
-    'guild-monitor': { view: ViewModel | null; panel: boolean }
+    'guild-monitor': { view: ViewModel | null; panel: boolean; meters: string }
   }
 }

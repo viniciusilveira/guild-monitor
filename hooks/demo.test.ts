@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { choiceOf, demoState, SCENES, sceneOf } from './demo'
+import { choiceOf, demoState, SCENES, SCHEME_SCENES, schemeOfScene, sceneOf } from './demo'
 import { DEFAULTS } from './guild'
 import { goldTotal } from './gold'
 import { buildView } from './view'
@@ -101,5 +101,50 @@ test('gold C24: every demo scene splits the demo cost', async () => {
     // The demo's split begins at zero: it adds up to the whole cost, so no caption.
     expect(view.goldPartial).toBe(false)
     expect(goldTotal(state.tracker.gold)).toBe(Math.round((state.usage.costUsd ?? 0) * 1e6))
+  }
+})
+
+test('meters C20: there is one demo scene per scheme', async () => {
+  expect([...SCHEME_SCENES]).toEqual(['esquema-padrao', 'esquema-contraste', 'esquema-daltonico'])
+  expect(SCHEME_SCENES.map(scene => schemeOfScene(scene))).toEqual(['padrao', 'contraste', 'daltonico'])
+  // The scenes of the figures force no scheme.
+  expect(SCENES.map(scene => schemeOfScene(scene))).toEqual([undefined, undefined, undefined, undefined, undefined, undefined])
+
+  for (const scene of SCHEME_SCENES) {
+    expect(sceneOf(scene)).toBe(scene)
+    expect(choiceOf(`  ${scene.toUpperCase()} `)).toEqual({ kind: 'scene', scene })
+  }
+})
+
+test('meters C22: the state of a scheme scene walks HP 72, 38 and 15 every 3 seconds', async () => {
+  const hpAt = (scene: (typeof SCHEME_SCENES)[number], at: number) => {
+    const state = demoState(scene, at)
+
+    return buildView(state.tracker, state.usage, at).hp
+  }
+
+  for (const scene of SCHEME_SCENES) {
+    // Three seconds apart, whatever the clock starts at: high, medium and low come in turn, and then again.
+    for (const start of [0, 1_000_000, 5_000_000, 7_654_321]) {
+      const first = Math.floor(start / 9_000) * 9_000
+      const levels = [0, 1, 2, 3, 4, 5].map(step => hpAt(scene, first + step * 3_000 + 1_500))
+
+      expect(levels).toEqual([72, 38, 15, 72, 38, 15])
+    }
+  }
+
+  // Inside one step the level does not move.
+  expect([hpAt('esquema-daltonico', 9_000), hpAt('esquema-daltonico', 11_999)]).toEqual([72, 72])
+})
+
+test('meters C20: a scheme scene is the warrior at work with the demo figures', async () => {
+  for (const scene of SCHEME_SCENES) {
+    const state = demoState(scene, NOW)
+    const view = buildView(state.tracker, state.usage, NOW)
+
+    expect(view.active).toBe('guerreiro')
+    expect(view.working).toBe(true)
+    expect(view.doing).toEqual({ verb: 'editando', target: 'register.tsx' })
+    expect([view.mana, view.stamina, view.costUsd]).toEqual([45, 64, 3.42])
   }
 })

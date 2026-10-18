@@ -6,6 +6,8 @@ import { doingOf } from './doing'
 import type { History } from './forecast'
 import { EMPTY_HISTORY, forecastLine } from './forecast'
 import { goldLines } from './gold'
+import type { MeterColors } from './schemes'
+import { SCHEMES } from './schemes'
 import type { Tracker } from './tracker'
 import { lineOf, modelLabel } from './tokens'
 import { CLASSES, progressOf } from './xp'
@@ -143,7 +145,8 @@ export const COLORS: Record<TaskClass, string> = { mago: '#8E6BBF', guerreiro: '
 
 // Colors of the meters, after the usual game HUD conventions: health goes green,
 // yellow, red as it drops; mana is blue; stamina orange; experience purple; gold gold.
-export const METER_COLORS = { mana: '#4A90E2', stamina: '#F39C12', xp: '#9B59B6', gold: '#F1C40F', unknown: '#7F8C8D' } as const
+// These are the `padrao` scheme's; the screen takes the colors of the scheme in use (see schemes.ts).
+export const METER_COLORS = { mana: SCHEMES.padrao.mana, stamina: SCHEMES.padrao.stamina, xp: SCHEMES.padrao.xp, gold: SCHEMES.padrao.gold, unknown: SCHEMES.padrao.unknown } as const
 
 // "5h esgota em ~40min": the window and its forecast, in the shorter wording when the full one does not fit
 // `width` columns and not at all when not even that does (a line never wraps).
@@ -165,17 +168,17 @@ export const bandForecast = (forecast: ViewModel['forecast']): { label: '5h' | '
 }
 
 // The color of the lines of tokens (a low cache hit rate uses `URGENT_COLOR`).
-export const TOKENS_COLOR = '#5DADE2'
+export const TOKENS_COLOR = SCHEMES.padrao.tokens
 
 // The red of a window that runs out before it resets.
-export const URGENT_COLOR = '#E74C3C'
+export const URGENT_COLOR = SCHEMES.padrao.urgent
 
-export const healthColor = (percent: number | null): string => {
-  if (percent === null) return METER_COLORS.unknown
-  if (percent > 50) return '#2ECC71'
-  if (percent >= 25) return '#F1C40F'
+export const healthColor = (percent: number | null, colors: MeterColors = SCHEMES.padrao): string => {
+  if (percent === null) return colors.unknown
+  if (percent > 50) return colors.hpHigh
+  if (percent >= 25) return colors.hpMid
 
-  return '#E74C3C'
+  return colors.hpLow
 }
 
 const DOING: Record<TaskClass, string> = { mago: 'planejando', guerreiro: 'em combate', explorador: 'explorando' }

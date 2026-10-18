@@ -174,6 +174,23 @@ The labels are in Portuguese, like the rest of the interface.
 - **Memory only.** Nothing is saved to the store, the `/guild trace` log or a toast, and everything starts over with the session.
 - **Demo scenes.** All of them show made-up values: `tokens  input 142k · output 18k · cache 87%`, `sessão  input 1,2M · output 96k · cache 91%` and `subagentes input 30k · output 4,1k · cache 38%` (this one in red, to show the low rate), with the model `sonnet-5-5` beside the name. While a scene runs, the real usage is ignored.
 
+## Color schemes of the meters
+
+The meters and the text lines can use one of three color schemes, independent of the characters' colors:
+
+| Scheme | What it is |
+|---|---|
+| `padrao` | the colors the monitor always had (HP green, yellow, red; MP blue; ST orange; XP purple; gold yellow; unknown gray) |
+| `contraste` | high contrast: bright colors with at least 7:1 against black (WCAG AAA) |
+| `daltonico` | does not rely on green against red: the [Okabe-Ito](https://jfly.uni-koeln.de/color/) palette, made to be told apart with protanopia, deuteranopia and tritanopia. The three HP levels also differ in lightness (pale blue, sky blue, vermillion), so HP reads without telling hues apart |
+
+- **Option and command.** The `meters` option sets the scheme (`padrao`, `contraste` or `daltonico`; default `padrao`). `/guild meters NAME` switches at once, **saves the choice** for the next sessions and answers `Esquema dos medidores: NAME (salvo)`; `/guild meters` without a name lists the schemes with the current one marked `(atual)`; an unknown name changes nothing and shows the valid ones. A saved choice wins over the option; with none saved the option applies. During a `esquema-*` demo scene the scene keeps its own scheme on screen: `/guild meters` still saves, and the answer says the saved scheme shows after `/guild off`.
+- **Where it applies.** The band, the side panel and the demo scenes: meters, the forecast and token lines, the counters and the bug's warning. The class colors (name, what the character is doing, gold by class, latest operations) and the sprites do not change.
+- **The unknown gray.** The `--` of a figure nobody reported keeps a gray that stays distinguishable in every scheme.
+- **Demo scenes.** `esquema-padrao`, `esquema-contraste` and `esquema-daltonico` (`/guild esquema-daltonico`) show the warrior at work in that scheme, whatever the saved one, and save nothing; HP goes through 72%, 38% and 15% every 3 seconds, so all three levels of HP show. `/guild off` goes back to the real session and to the saved scheme.
+- **Privacy.** Only the name of the scheme is saved, with the panel's open/closed state, in the interface preferences; never session data.
+- **Accessibility note.** The `daltonico` scheme is checked by tests against the common kinds of color blindness (protanopia, deuteranopia, tritanopia, simulated with the Machado, Oliveira and Fernandes 2009 model): no two meters get closer than a set color distance, and the three HP levels differ in luminance. Every `daltonico` color also keeps at least 4.5:1 against black (WCAG AA), checked by a test; for that, mana is a lightened Okabe-Ito blue and the unknown value a light gray. The schemes assume a dark terminal background.
+
 ## Side panel
 
 On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 columns or more), the guild opens as a **panel to the left of the conversation**:
@@ -203,7 +220,8 @@ It opens by itself from 144 columns (110 once you opened it yourself), unless yo
 | `/guild panel` | open the side panel and keep opening it |
 | `/guild bar` | close the panel and go back to the bottom band |
 | `/guild trace [N\|clear]` | print the record of the last N tool calls (default 20): who was on screen, who got the XP (`ERRO` marks a failure, `RECUSADA` a call you rejected), and a summary; `clear` erases it. Only tool names, classes and the program name of a shell command are kept, never prompts, paths, arguments or variables |
-| `/guild <scene>` | show a demo scene (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` returns to the real session |
+| `/guild meters [name]` | switch the meters' color scheme (`padrao`, `contraste`, `daltonico`) at once and keep it for the next sessions; without a name, list the schemes |
+| `/guild <scene>` | show a demo scene (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, `esquema-padrao`, `esquema-contraste`, `esquema-daltonico`); `/guild off` returns to the real session |
 
 ## Requirements
 
@@ -245,7 +263,8 @@ Restart Claude Code and the guild appears above the prompt.
 | `tiredAtPercent` | `75` | context filling at which everyone gets tired |
 | `bandSize` | `full` | `full`: active character full size (16 rows); `compact`: everyone reduced (8 rows) |
 | `layout` | `auto` | `auto`: side panel where it fits, bottom band otherwise; `bar`: only the band; `panel`: only the panel |
-| `demo` | `off` | a fixed scene with made-up figures: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo` |
+| `meters` | `padrao` | color scheme of the meters: `padrao`, `contraste` (high contrast) or `daltonico` (color-blind friendly); the one saved with `/guild meters` wins |
+| `demo` | `off` | a fixed scene with made-up figures: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, or one per color scheme: `esquema-padrao`, `esquema-contraste`, `esquema-daltonico` |
 | `showForecast` | `on` | `on`: shows when the 5-hour and 7-day windows run out at the current pace; `off`: hides the forecast |
 
 Set them on install (`claude plugin install … --config bandSize=compact`), with `claude plugin configure guild-monitor`, or in `/plugin`.
@@ -293,7 +312,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `gold.ts` (gold split by class), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `gold.ts` (gold split by class), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`, `schemes.ts` (color schemes of the meters), `choices.ts` (named choices saved between sessions). Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 
