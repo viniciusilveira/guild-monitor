@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { TraceEntry } from './trace'
-import { appendTrace, describeTrace, MAX_TRACE, parseTrace, summarizeTrace } from './trace'
+import { appendTrace, describeTrace, MAX_TRACE, parseTrace, programOf, summarizeTrace } from './trace'
 
 const tool = (patch: Partial<TraceEntry> = {}): TraceEntry => ({
   at: 1_000,
@@ -60,4 +60,28 @@ test('the description has the summary, then the latest entries with what was on 
   expect(lines[1]?.includes('Bash:npm (act) ERRO | em cena: guerreiro | XP: -')).toBe(true)
   expect(lines[2]?.includes('modo: plano ligado | em cena: mago')).toBe(true)
   expect(describeTrace([], 5)).toBe('Registro vazio.')
+})
+
+test('the program of a command is its name and nothing that could be a secret or a path', async () => {
+  expect(programOf('npm test')).toBe('npm')
+  expect(programOf('  git   status ')).toBe('git')
+  expect(programOf('API_KEY=abc123 npm test')).toBe('npm')
+  expect(programOf('FOO=1 BAR=2 node script.js')).toBe('node')
+  expect(programOf('/Users/x/segredo/run.sh --go')).toBe('run.sh')
+  expect(programOf('./run.sh')).toBe('run.sh')
+})
+
+test('a word that is not a plain program name is left out, whole', async () => {
+  expect(programOf('')).toBe(undefined)
+  expect(programOf('API_KEY=abc123')).toBe(undefined)
+  expect(programOf('https://host/path?token=abc')).toBe(undefined)
+  expect(programOf('K="a b" cmd')).toBe(undefined)
+  expect(programOf(`${'x'.repeat(31)} go`)).toBe(undefined)
+  expect(programOf(`${'x'.repeat(30)} go`)).toBe('x'.repeat(30))
+})
+
+test('a stored program that is not a plain name is dropped when the trace is read', async () => {
+  const parsed = parseTrace([tool({ program: 'API_KEY=abc123' }), tool({ program: 'npm' }), tool({ program: 'y'.repeat(200) })])
+
+  expect(parsed.map(entry => entry.program)).toEqual([undefined, 'npm', undefined])
 })

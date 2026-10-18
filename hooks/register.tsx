@@ -15,7 +15,7 @@ import { bandTree, sidebarTree } from './render'
 import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import type { TraceEntry } from './trace'
-import { appendTrace, describeTrace, parseTrace } from './trace'
+import { appendTrace, describeTrace, parseTrace, programOf } from './trace'
 import { completeTurn, createTracker, setPlanMode, startTurn, tick, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
 import { buildView, frameAt, mergeUsage, NAMES, sheetIdFor, usageFrom } from './view'
@@ -296,7 +296,7 @@ export const register: Register = (on, options) => {
         at: finishedAt,
         what: 'tool',
         tool: use.tool,
-        program: use.command === undefined ? undefined : use.command.trim().split(/\s+/)[0],
+        program: use.command === undefined ? undefined : programOf(use.command),
         kind: kindOf(use),
         shown: tracker.active,
         paid: done.gain?.cls ?? (ran.isError === true ? undefined : classOf(use, tracker.planMode)),
@@ -332,14 +332,14 @@ export const register: Register = (on, options) => {
   })
 
   // The footer's mode labels are the only place the engine says plan mode is on.
-  on('ui.render', { component: 'SessionMode' }, (_$, e, next) => {
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const planMode = e.props.modes.some(mode => /plan/i.test(mode))
     const changed = planMode !== tracker.planMode
     tracker = setPlanMode(tracker, planMode)
 
     // Written to the store with the next event: a drawing does not write.
     if (changed) {
-      trace = appendTrace(trace, { at: Date.now(), what: 'mode', tool: planMode ? 'plano ligado' : 'plano desligado', shown: tracker.active, planMode })
+      trace = appendTrace(trace, { at: await $.clock.now(), what: 'mode', tool: planMode ? 'plano ligado' : 'plano desligado', shown: tracker.active, planMode })
     }
 
     return next(e)

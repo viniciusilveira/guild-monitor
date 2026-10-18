@@ -21,6 +21,20 @@ export type TraceEntry = {
 
 export const MAX_TRACE = 200
 
+const PROGRAM_NAME = /^[A-Za-z0-9._+-]{1,30}$/
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+
+// The program a shell command runs, and nothing else of it: leading `NAME=value` words are
+// skipped (they may hold a secret), a path is cut to its last part, and a word that is not a
+// plain program name is dropped, so no value or path ever reaches the record.
+export const programOf = (command: string): string | undefined => {
+  const words = command.trim().split(/\s+/)
+  const first = words.find(word => word !== '' && !ASSIGNMENT.test(word))
+  const name = first?.split('/').pop()
+
+  return name !== undefined && PROGRAM_NAME.test(name) ? name : undefined
+}
+
 export const appendTrace = (trace: readonly TraceEntry[], entry: TraceEntry, max = MAX_TRACE): TraceEntry[] =>
   [...trace, entry].slice(-max)
 
@@ -43,7 +57,7 @@ export const parseTrace = (stored: unknown): TraceEntry[] => {
       at: raw.at,
       what: raw.what,
       tool: typeof raw.tool === 'string' ? raw.tool : undefined,
-      program: typeof raw.program === 'string' ? raw.program : undefined,
+      program: typeof raw.program === 'string' && PROGRAM_NAME.test(raw.program) ? raw.program : undefined,
       kind: raw.kind === 'act' || raw.kind === 'look' || raw.kind === 'plan' ? raw.kind : undefined,
       shown: raw.shown,
       paid: isClass(raw.paid) ? raw.paid : undefined,
