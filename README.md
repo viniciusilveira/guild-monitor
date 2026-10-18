@@ -189,7 +189,7 @@ The meters and the text lines can use one of three color schemes, independent of
 - **The unknown gray.** The `--` of a figure nobody reported keeps a gray that stays distinguishable in every scheme.
 - **Demo scenes.** `esquema-padrao`, `esquema-contraste` and `esquema-daltonico` (`/guild esquema-daltonico`) show the warrior at work in that scheme, whatever the saved one, and save nothing; HP goes through 72%, 38% and 15% every 3 seconds, so all three levels of HP show. `/guild off` goes back to the real session and to the saved scheme.
 - **Privacy.** Only the name of the scheme is saved, with the panel's open/closed state, in the interface preferences; never session data.
-- **Accessibility note.** The `daltonico` scheme is checked by tests against the common kinds of color blindness (protanopia, deuteranopia, tritanopia, simulated with the Machado, Oliveira and Fernandes 2009 model): no two meters get closer than a set color distance, and the three HP levels differ in luminance. The schemes assume a dark terminal background.
+- **Accessibility note.** The `daltonico` scheme is checked by tests against the common kinds of color blindness (protanopia, deuteranopia, tritanopia, simulated with the Machado, Oliveira and Fernandes 2009 model): no two meters get closer than a set color distance, and the three HP levels differ in luminance. Every `daltonico` color also keeps at least 4.5:1 against black (WCAG AA), checked by a test; for that, mana is a lightened Okabe-Ito blue and the unknown value a light gray. The schemes assume a dark terminal background.
 
 ## Side panel
 

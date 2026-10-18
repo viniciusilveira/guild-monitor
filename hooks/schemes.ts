@@ -61,16 +61,22 @@ const contraste: MeterColors = {
 // `daltonico`: the Okabe-Ito palette (Okabe and Ito, "Color Universal Design", 2008), made to be told apart with
 // protanopia, deuteranopia and tritanopia. Health does not rely on green against red: its levels fall in lightness
 // too (a pale tint of sky blue, sky blue, vermillion). Mana is blue, stamina orange, experience reddish purple,
-// gold yellow, the unknown a dark gray; the tokens line is bluish green and the warnings vermillion.
+// gold yellow, the unknown a light gray; the tokens line is bluish green and the warnings vermillion.
+//
+// Every color keeps at least 4.5:1 against black (WCAG AA), for a reader who already has trouble with color. The
+// strict Okabe-Ito blue (#0072B2, 4.05:1) and a dark gray (#6A6A6A, 3.88:1) fell short, so two roles leave the
+// strict palette: mana is that blue mixed 20% with white (#2687BE, 5.29:1), and the unknown is a light gray
+// (#C0C0C0, 11.54:1, which also keeps it 16 or more CIE76 away from the purple under deuteranopia, where a mid gray
+// is not). The pale HP tint is a tint of the palette's sky blue as well. Colors still assume a dark background.
 const daltonico: MeterColors = {
   hpHigh: '#BFE6FA',
   hpMid: '#56B4E9',
   hpLow: '#D55E00',
-  mana: '#0072B2',
+  mana: '#2687BE',
   stamina: '#E69F00',
   xp: '#CC79A7',
   gold: '#F0E442',
-  unknown: '#6A6A6A',
+  unknown: '#C0C0C0',
   tokens: '#009E73',
   urgent: '#D55E00',
   alert: '#D55E00',

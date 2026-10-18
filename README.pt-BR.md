@@ -187,7 +187,7 @@ Os medidores e as linhas de texto podem usar um de três esquemas de cores, inde
 - **O cinza de desconhecido.** O `--` de um valor que ninguém informou mantém um cinza que continua distinguível em todos os esquemas.
 - **Cenas de demonstração.** `esquema-padrao`, `esquema-contraste` e `esquema-daltonico` (`/guild esquema-daltonico`) mostram o guerreiro trabalhando naquele esquema, seja qual for o salvo, e não salvam nada; o HP passa por 72%, 38% e 15% a cada 3 segundos, então os três níveis de HP aparecem. `/guild off` volta à sessão real e ao esquema salvo.
 - **Privacidade.** Só o nome do esquema é salvo, junto com o estado aberto/fechado do painel, nas preferências da interface; nunca dado de sessão.
-- **Nota de acessibilidade.** O esquema `daltonico` é verificado por testes contra os tipos comuns de daltonismo (protanopia, deuteranopia, tritanopia, simulados com o modelo de Machado, Oliveira e Fernandes, 2009): dois medidores nunca ficam mais próximos que uma distância de cor definida, e os três níveis de HP diferem em luminância. Os esquemas supõem fundo escuro no terminal.
+- **Nota de acessibilidade.** O esquema `daltonico` é verificado por testes contra os tipos comuns de daltonismo (protanopia, deuteranopia, tritanopia, simulados com o modelo de Machado, Oliveira e Fernandes, 2009): dois medidores nunca ficam mais próximos que uma distância de cor definida, e os três níveis de HP diferem em luminância. Toda cor do `daltonico` também mantém pelo menos 4,5:1 contra o preto (WCAG AA), verificado por teste; por isso o MP é um azul Okabe-Ito clareado e o valor desconhecido um cinza claro. Os esquemas supõem fundo escuro no terminal.
 
 ## Painel lateral
 

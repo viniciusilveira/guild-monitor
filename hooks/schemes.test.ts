@@ -119,3 +119,9 @@ test('meters C7: contraste colors reach contrast 7 over black', async () => {
     expect(`${name} ${contrast(value, BLACK) >= 7}`).toBe(`${name} true`)
   }
 })
+
+test('meters C25: daltonico colors keep a floor of contrast 4.5 over black', async () => {
+  for (const [name, value] of Object.entries(SCHEMES.daltonico)) {
+    expect(`${name} ${contrast(value, BLACK) >= 4.5}`).toBe(`${name} true`)
+  }
+})
