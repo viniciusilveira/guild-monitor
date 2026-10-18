@@ -6,17 +6,18 @@ const START = 1_000_000
 const MINUTE = 60_000
 
 type Fail = (tool: string) => boolean
+type Says = (tool: string) => string | undefined
 
 // The world beneath the guild plugin: a clock the test moves, a store holding a guild whose warrior is at level 3,
 // the session's figures and a tool runner that fails the calls the test says.
-const setup = async ($: Engine, on: On, fails: Fail = () => false) => {
+const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = () => undefined) => {
   const clock = mock.clock(on, { now: START })
   mock.store(on, { 'guild.v1': { guerreiro: { xp: 200 } } })
   on('session.usage', async () => ({ value: { startedAt: 0, context: { percent: 30 }, rateLimits: [], cost: { usd: 1.5 } } }) as never)
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
   on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }) as never)
-  on('tool.call', async (_$, e) => ({ result: 'ok', isError: fails(e.tool) }) as never)
+  on('tool.call', async (_$, e) => ({ result: 'ok', isError: fails(e.tool), text: says(e.tool) }) as never)
   await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
 
   return clock
@@ -91,4 +92,20 @@ test('the panel lists the latest operations newest first', { options: { layout: 
   expect(rows[1]).toMatch(/^2min +Guerreiro \+\d+ Write$/)
   expect(rows[2]).toMatch(/^3min +Guerreiro \+\d+ Edit$/)
   await panel.unmount()
+})
+
+test('a rejected plan spawns no bug in the engine but a failing command does', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on, tool => tool === 'ExitPlanMode' || tool === 'Bash', tool => (tool === 'Bash' ? 'Exit code 1\nnpm ERR!' : undefined))
+  await $.turn.start({ text: 'planeje a mudança', turnId: 't1' } as never)
+  await call($, 'ExitPlanMode', { plan: 'faça' })
+
+  const before = await mountPanel($)
+  expect(await before.find({ key: 'bug' })).toBeUndefined()
+  await before.unmount()
+
+  await call($, 'Bash', { command: 'npm test' })
+
+  const after = await mountPanel($)
+  expect(await after.find({ key: 'bug' })).toBeDefined()
+  await after.unmount()
 })

@@ -71,11 +71,15 @@ export const toolStarted = (tracker: Tracker, use: ToolUse, now: number): Tracke
 export type Gain = { cls: TaskClass; xp: number; level: number; leveledUp: boolean }
 
 // A tool call that worked pays its own class, at once: by what it took and what it wrote, plus
-// a bonus for making a failing call pass again. Only calls inside a turn pay.
+// a bonus for making a failing call pass again. Only calls inside a turn pay. A rejected call
+// (`rejected`) is neither: it raises no bug, defeats none and pays nothing.
 export const toolFinished = (
   tracker: Tracker,
-  done: { use: ToolUse; isError: boolean; now: number; durationMs: number },
+  done: { use: ToolUse; isError: boolean; now: number; durationMs: number; rejected?: boolean },
 ): { tracker: Tracker; gain?: Gain } => {
+  // A call the person turned down did not fail and did not work: the bug stays as it was and nothing is paid.
+  if (done.rejected === true) return { tracker: { ...tracker, lastActivityAt: done.now } }
+
   const bug = onToolResult(tracker.bug, {
     category: categoryOf(done.use.tool, done.use.command),
     isError: done.isError,

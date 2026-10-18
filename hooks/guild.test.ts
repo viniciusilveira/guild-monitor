@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Bug, Snapshot } from './guild'
-import { animationFor, bugAt, categoryOf, DEFAULTS, DEFEAT_MS, EXPIRE_MS, NO_BUG, onToolResult } from './guild'
+import { animationFor, bugAt, categoryOf, DEFAULTS, DEFEAT_MS, EXPIRE_MS, isRejection, NO_BUG, onToolResult } from './guild'
 
 const base: Snapshot = { working: false, active: 'guerreiro', idleMs: 0, contextPercent: 10 }
 const snap = (patch: Partial<Snapshot>): Snapshot => ({ ...base, ...patch })
@@ -94,4 +94,34 @@ test('a live bug expires after the quiet period', async () => {
   expect(EXPIRE_MS).toBe(120_000)
   expect(bugAt(alive, EXPIRE_MS - 1)).toEqual(alive)
   expect(bugAt(alive, EXPIRE_MS)).toEqual(NO_BUG)
+})
+
+test('an error from a plan or question tool is a rejection', async () => {
+  for (const tool of ['ExitPlanMode', 'AskUserQuestion']) {
+    expect(isRejection({ tool, isError: true })).toBe(true)
+    expect(isRejection({ tool, isError: true, text: 'qualquer coisa' })).toBe(true)
+    expect(isRejection({ tool, isError: false })).toBe(false)
+  }
+})
+
+test('an error whose text begins with an engine refusal is a rejection', async () => {
+  const texts = [
+    'Permission for this tool use was denied. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file).',
+    "The user doesn't want to proceed with this tool use. The tool use was rejected.",
+    '[Request interrupted by user for tool use]',
+  ]
+
+  for (const text of texts) {
+    expect(isRejection({ tool: 'Edit', isError: true, text })).toBe(true)
+    expect(isRejection({ tool: 'Edit', isError: true, text: `\n  ${text}` })).toBe(true)
+    expect(isRejection({ tool: 'Edit', isError: false, text })).toBe(false)
+    expect(isRejection({ tool: 'Edit', isError: true, text: `Exit code 1\n${text}` })).toBe(false)
+  }
+})
+
+test('a failing shell command or edit is not a rejection', async () => {
+  expect(isRejection({ tool: 'Bash', isError: true, text: 'Exit code 1\nnpm ERR! test failed' })).toBe(false)
+  expect(isRejection({ tool: 'Bash', isError: true, text: 'Exit code 1\n ! [rejected] main -> main (non-fast-forward)' })).toBe(false)
+  expect(isRejection({ tool: 'Edit', isError: true, text: 'String to replace not found in file.' })).toBe(false)
+  expect(isRejection({ tool: 'Bash', isError: true })).toBe(false)
 })

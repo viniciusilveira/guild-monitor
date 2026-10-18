@@ -85,3 +85,20 @@ test('a stored program that is not a plain name is dropped when the trace is rea
 
   expect(parsed.map(entry => entry.program)).toEqual([undefined, 'npm', undefined])
 })
+
+test('the trace marks a rejection apart from a failure', async () => {
+  const refused = tool({ tool: 'ExitPlanMode', kind: 'plan', paid: undefined, rejected: true })
+  const failed = tool({ tool: 'Bash', program: 'npm', kind: 'act', paid: undefined, isError: true })
+
+  expect(refused.isError).toBeUndefined()
+  expect(parseTrace([refused, failed])).toEqual([
+    { ...refused, program: undefined, isError: undefined },
+    { ...failed, rejected: undefined },
+  ])
+
+  const lines = describeTrace([refused, failed], 5).split('\n')
+  expect(lines[1]).toContain('ExitPlanMode (plan) RECUSADA')
+  expect(lines[1]).not.toContain('ERRO')
+  expect(lines[2]).toContain('Bash:npm (act) ERRO')
+  expect(lines[2]).not.toContain('RECUSADA')
+})

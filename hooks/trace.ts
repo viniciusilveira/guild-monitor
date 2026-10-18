@@ -16,7 +16,11 @@ export type TraceEntry = {
   // The class that got the XP of a tool call that worked.
   paid?: TaskClass
   planMode: boolean
+  // The tool call failed.
   isError?: boolean
+  // The person turned the tool call down (declined plan, denied permission, interrupted question):
+  // not a failure, so `isError` stays off.
+  rejected?: boolean
 }
 
 export const MAX_TRACE = 200
@@ -63,6 +67,7 @@ export const parseTrace = (stored: unknown): TraceEntry[] => {
       paid: isClass(raw.paid) ? raw.paid : undefined,
       planMode: raw.planMode === true,
       isError: raw.isError === true ? true : undefined,
+      rejected: raw.rejected === true ? true : undefined,
     })
   }
 
@@ -85,7 +90,7 @@ const line = (entry: TraceEntry): string => {
   if (entry.what === 'mode') return `${when} modo: ${entry.tool ?? ''} | em cena: ${entry.shown}`
 
   const target = entry.program === undefined ? entry.tool : `${entry.tool}:${entry.program}`
-  const result = entry.isError === true ? ' ERRO' : ''
+  const result = entry.rejected === true ? ' RECUSADA' : entry.isError === true ? ' ERRO' : ''
 
   return `${when} ${target ?? '?'} (${entry.kind ?? '?'})${result} | em cena: ${entry.shown} | XP: ${entry.paid ?? '-'}${plan}`
 }

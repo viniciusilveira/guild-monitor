@@ -235,3 +235,25 @@ test('an expired bug cannot be defeated or paid', async () => {
   expect(later.tracker.bug.phase).toBe('none')
   expect(later.gain?.xp).toBe(2)
 })
+
+test('a rejected call raises no bug, defeats none and pays no XP', async () => {
+  const started = startTurn(fresh(), { id: 't1', prompt: 'planeje', now: 0 })
+  const plan = { tool: 'ExitPlanMode' }
+
+  const refused = toolFinished(toolStarted(started, plan, 1), { use: plan, isError: true, rejected: true, now: 2, durationMs: 0 })
+  expect(refused.tracker.bug.phase).toBe('none')
+  expect(refused.gain).toBeUndefined()
+  expect(refused.tracker.guild).toEqual(started.guild)
+  expect(refused.tracker.recent).toEqual([])
+  expect(refused.tracker.lastActivityAt).toBe(2)
+
+  // The same error that is not a rejection does raise the bug.
+  expect(toolFinished(toolStarted(started, plan, 1), { use: plan, isError: true, now: 2, durationMs: 0 }).tracker.bug.phase).toBe('alive')
+
+  // A live bug stays alive: a rejection of the same kind is not the fix.
+  const live = failedAt(1_000)
+  const after = toolFinished(live, { use: npmTest, isError: false, rejected: true, now: 2_000, durationMs: 0 })
+  expect(after.tracker.bug).toEqual(live.bug)
+  expect(after.gain).toBeUndefined()
+  expect(after.tracker.guild).toEqual(live.guild)
+})
