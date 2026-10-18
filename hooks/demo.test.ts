@@ -98,6 +98,8 @@ test('gold C24: every demo scene splits the demo cost', async () => {
       { cls: 'guerreiro', micros: 1_710_000, percent: 50 },
       { cls: 'explorador', micros: 510_000, percent: 15 },
     ])
+    // The demo's split begins at zero: it adds up to the whole cost, so no caption.
+    expect(view.goldPartial).toBe(false)
     expect(goldTotal(state.tracker.gold)).toBe(Math.round((state.usage.costUsd ?? 0) * 1e6))
   }
 })

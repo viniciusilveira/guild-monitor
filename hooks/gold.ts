@@ -131,3 +131,6 @@ export const goldTexts = (lines: readonly GoldLine[], width: number): string[] |
 
   return null
 }
+
+// The dim caption under the lines when the split began after the session had already cost something.
+export const GOLD_PARTIAL_NOTE = 'desde a abertura'

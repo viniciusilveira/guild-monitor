@@ -105,6 +105,7 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     manaResetsAt: hours?.resetsAt ?? null,
     costUsd: usage.costUsd ?? null,
     gold: goldLines(tracker.gold),
+    goldPartial: tracker.gold.base > 0,
     counters: { combo: tracker.counters.combo, best: tracker.counters.best, bugs: tracker.counters.bugs },
     recent: [...tracker.recent],
     doing: doingOf(tracker.running),

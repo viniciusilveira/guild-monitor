@@ -1614,7 +1614,9 @@ test('gold C18: the panel shows the split between the counters and the session t
 
     expect(texts.filter(text => GOLD_LINE.test(text))).toEqual(FULL_LINES)
     expect(texts.indexOf(FULL_LINES[0] as string)).toBe(counters + 1)
-    expect(session).toBe(counters + 4)
+    // The session cost $1.50 before the split began: the dim caption comes under the three lines.
+    expect(texts[counters + 4]).toBe('desde a abertura')
+    expect(session).toBe(counters + 5)
   }
 })
 
@@ -1749,6 +1751,7 @@ test('gold C25: every demo scene shows the made-up split in the panel', OPTIONS,
     await $.command.run({ command: 'guild', args: scene } as never)
 
     expect(await goldTexts($, 60)).toEqual(FULL_LINES)
+    expect(await noteIn($, 60)).toBe(undefined)
     expect(await goldTexts($, 20)).toEqual(['Mag ~$1.20 35%', 'Gue ~$1.71 50%', 'Exp ~$0.51 15%'])
   }
 })
@@ -1762,4 +1765,51 @@ test('gold C13b: a call a hook denied is not an operation of the interval', OPTI
 
   // Only the explorer's read ran: the denied edit would have taken half of the $1.00.
   expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$0.00 (0%)', 'Explorador ~$1.00 (100%)'])
+})
+
+const NOTE = 'desde a abertura'
+const noteIn = async ($: Engine, columns: number) => (await panelItems($, columns)).find(item => item.text === NOTE)
+
+test('gold C30: a split that began after the session had cost something has a dim caption under the lines', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await split342($)
+
+  const items = await panelItems($, 60)
+  const last = items.findIndex(item => item.text === 'Explorador ~$0.51 (15%)')
+  expect(items[last + 1]).toEqual({ text: NOTE, color: undefined, dim: true })
+
+  expect((await noteIn($, 20))?.dim).toBe(true)
+  // Too narrow for the caption (16 columns) but not for the lines (14): the caption goes, the lines stay.
+  expect(await noteIn($, 15)).toBe(undefined)
+  expect((await goldTexts($, 15)).length).toBe(3)
+
+  // The bands do not show the split and so not the caption either.
+  expect((await bandItems($, 120, 20)).some(item => item.text === NOTE)).toBe(false)
+  const compact = await mountBand($, 60, 8)
+  const lines = (await compact.findAll({ type: 'Text' })).map(item => item.text as string)
+  await compact.unmount()
+  expect(lines.includes(NOTE)).toBe(false)
+})
+
+test('gold C31: a split that began at zero has no caption, and a clear that rebases above zero has one', OPTIONS, async ($, on) => {
+  nextFast = true
+  nextCost = 0
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 1.2)
+  expect((await goldTexts($)).length).toBe(3)
+  expect(await noteIn($, 60)).toBe(undefined)
+
+  await measureCost($, 0.4)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 0.9)
+  expect((await noteIn($, 60))?.text).toBe(NOTE)
+
+  // A clear down to exactly zero starts a split from nothing again: no caption.
+  await measureCost($, 0)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 0.5)
+  expect((await goldTexts($)).length).toBe(3)
+  expect(await noteIn($, 60)).toBe(undefined)
 })

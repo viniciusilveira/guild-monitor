@@ -4,7 +4,7 @@ import type { ViewModel } from '../types'
 import type { TaskClass } from './classify'
 import { counterLine, counterSegments } from './counters'
 import { doingLine } from './doing'
-import { goldTexts } from './gold'
+import { GOLD_PARTIAL_NOTE, goldTexts } from './gold'
 import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
@@ -132,18 +132,23 @@ const tokenLines = (ui: Elements['terminal'], view: ViewModel, width: number) =>
 }
 
 // The panel's lines of the gold by class, an estimate (the "~"): none until the cost has changed, and none when
-// not even the shortest form fits the width.
+// not even the shortest form fits the width. A split that began after the session had cost something has a caption.
 const goldLines = (ui: Elements['terminal'], view: ViewModel, width: number) => {
   const { Text } = ui
   const texts = view.gold === null ? null : goldTexts(view.gold, width)
 
-  return view.gold === null || texts === null
-    ? []
-    : view.gold.map((line, i) => (
-        <Text key={`gold-${line.cls}`} color={COLORS[line.cls]}>
-          {texts[i]}
-        </Text>
-      ))
+  if (view.gold === null || texts === null) return []
+
+  const rows = view.gold.map((line, i) => (
+    <Text key={`gold-${line.cls}`} color={COLORS[line.cls]}>
+      {texts[i]}
+    </Text>
+  ))
+
+  // A resumed session: the lines add up to less than the `ouro` above, and a dim caption says so (gone when it does not fit).
+  return view.goldPartial && GOLD_PARTIAL_NOTE.length <= width
+    ? [...rows, <Text key="gold-note" dimColor>{GOLD_PARTIAL_NOTE}</Text>]
+    : rows
 }
 
 // The band above the prompt: the active character, its attributes, the other

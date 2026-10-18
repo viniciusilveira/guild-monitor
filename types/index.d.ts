@@ -49,6 +49,9 @@ export type ViewModel = {
   // What each class spent of that cost, as an estimate, in the order of the classes; null until the cost has changed.
   // In memory and on screen only.
   gold: GoldLine[] | null
+  // The split began after the session had already cost something (a resumed session): the lines add up to less than
+  // the cost shown, and the screen says so.
+  goldPartial: boolean
   // The session's scores, in memory only: operations in a row that worked, the best such run and bugs defeated.
   counters: { combo: number; best: number; bugs: number }
   // The latest payments of XP, oldest first.
