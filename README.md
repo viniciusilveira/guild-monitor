@@ -187,14 +187,23 @@ You do not need to restart to change scenes: type `/guild bug` (or any other sce
 
 ## Development
 
+To check a change, run the one command that CI runs too (`npm ci` once to install the pinned TypeScript):
+
 ```sh
-claude plugin test .       # unit tests of the pure modules
+scripts/verify             # type check, tests and plugin validation; stops at the first failure
+```
+
+The steps one by one:
+
+```sh
+claude plugin test .       # unit tests of the pure modules and of what the band and the panel show
 claude plugin validate .   # manifest and hook checks
 tsc -p .                   # type check (see below)
 node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 ```
 
-- `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it.
+- `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
+- `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
 - All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
