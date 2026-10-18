@@ -107,8 +107,6 @@ export type SidebarArgs = {
   layout: SidebarLayout
   now: number
   cellsFor: CellsFor
-  // Pressing the collapse button.
-  onCollapse: () => void
 }
 
 const HISTORY_ROWS = 8
@@ -116,8 +114,8 @@ const HISTORY_ROWS = 8
 // The side panel: the same guild as the band, stacked in one column, with the
 // latest XP payments at the bottom. The engine scrolls what does not fit.
 export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
-  const { Box, Text, Raster, Button } = ui
-  const { view, layout, now, cellsFor, onCollapse } = args
+  const { Box, Text, Raster } = ui
+  const { view, layout, now, cellsFor } = args
   const active = view.chars.find(char => char.cls === view.active) ?? view.chars[0]
   if (active === undefined) return undefined
 
@@ -141,7 +139,6 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
 
   return (
     <Box flexDirection="column">
-      <Button key="collapse" label="recolher" hotkey="r" dimColor onPress={onCollapse} />
       <Box flexDirection="row" gap={1}>
         {layout.active !== null && (
           <Raster

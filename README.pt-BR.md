@@ -93,7 +93,7 @@ Num terminal largo, no layout de tela cheia do Claude Code (`/tui fullscreen`, 1
 - o personagem ativo em tamanho cheio, com os status **ao lado**, e o bug logo embaixo dos status quando uma chamada de ferramenta falha;
 - os outros dois personagens embaixo, e a lista das **últimas pagas de XP** (`3min Guerreiro +6 Edit`);
 - a largura é sua: arraste a borda do painel e o layout acompanha (os status descem para baixo do personagem quando estreito, depois o personagem encolhe);
-- o botão **recolher** fecha o painel e traz a barra inferior de volta; `/guild panel` abre de novo.
+- o **×** no canto do painel fecha e traz a barra inferior de volta; `/guild panel` abre de novo.
 
 Ele abre sozinho a partir de 144 colunas (110 depois que você mesmo o abriu), a não ser que você o tenha fechado: a escolha fica guardada. Onde não há espaço (terminal estreito ou o layout clássico, sem tela cheia), a guilda continua como a barra acima do prompt, então nunca fica sem guilda.
 

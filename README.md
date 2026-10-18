@@ -93,7 +93,7 @@ On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 co
 - the active character at full size, with its stats **beside** it, and the bug right under the stats when a tool call fails;
 - the other two characters under them, and a list of the **latest XP payments** (`3min Warrior +6 Edit`);
 - the width is yours: drag the panel's edge and the layout follows (stats drop under the character when narrow, then the character shrinks);
-- the **recolher** (collapse) button closes the panel and brings the bottom band back; `/guild panel` opens it again.
+- the **×** in the panel's corner closes it and brings the bottom band back; `/guild panel` opens it again.
 
 It opens by itself from 144 columns (110 once you opened it yourself), unless you closed it: the choice is remembered. Where there is no room (a narrow terminal, or the classic non-fullscreen layout) the guild stays as the band above the prompt, so it is never missing.
 

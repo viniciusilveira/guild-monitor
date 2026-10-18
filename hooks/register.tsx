@@ -325,13 +325,12 @@ export const register: Register = (on, options) => {
 
         return cellsOf(spec.sheetId, size, spec.frame) ?? ''
       },
-      onCollapse: () => $.ui.close({ id: PANEL_ID }),
     })
 
     return tree ?? next(e)
   })
 
-  // Closed by the person (the mark, the collapse button) or by `/guild bar`: the band comes back and stays.
+  // Closed by the person (the engine's × mark) or by `/guild bar`: the band comes back and stays.
   on('ui.close', { id: PANEL_ID }, async ($, e, next) => {
     if (e.origin.kind !== 'unload') await hidePanel($)
 
