@@ -5,6 +5,8 @@ import {
   callEnded,
   callStarted,
   completeTurn,
+  costMeasured,
+  intervalNow,
   createTracker,
   setPlanMode,
   startTurn,
@@ -302,4 +304,41 @@ test('running calls: starting a new turn clears the calls of the old one', async
   expect(running.running.length).toBe(1)
 
   expect(startTurn(running, { id: 't2', prompt: 'outro', now: 5 }).running).toEqual([])
+})
+
+test('gold C13: a finished call counts as an operation of its class, errors too, rejected and outside a turn not', async () => {
+  let tracker = costMeasured(startTurn(fresh(), { id: 't1', prompt: 'oi', now: 1 }), 1)
+  tracker = toolFinished(tracker, { use: edit, isError: false, now: 2, durationMs: 10 }).tracker
+  tracker = toolFinished(tracker, { use: read, isError: true, now: 3, durationMs: 10 }).tracker
+  tracker = toolFinished(tracker, { use: read, isError: true, rejected: true, now: 4, durationMs: 10 }).tracker
+  expect(tracker.gold.ops).toEqual({ mago: 0, guerreiro: 1, explorador: 1 })
+
+  const measured = costMeasured(tracker, 4)
+  expect([measured.gold.spent.guerreiro, measured.gold.spent.explorador, measured.gold.spent.mago]).toEqual([1_500_000, 1_500_000, 0])
+  // A reading that is not a cost leaves the very same tracker.
+  expect(costMeasured(measured, Number.NaN)).toBe(measured)
+
+  // Outside a turn nothing is an operation: the change goes to the active class (the explorer, by default).
+  let idle = costMeasured(fresh(), 1)
+  idle = toolFinished(idle, { use: edit, isError: false, now: 2, durationMs: 10 }).tracker
+  expect(idle.gold.ops).toEqual({ mago: 0, guerreiro: 0, explorador: 0 })
+  expect(costMeasured(idle, 2).gold.spent).toEqual({ mago: 0, guerreiro: 0, explorador: 1_000_000 })
+})
+
+test('gold C34: the interval taken before a reading keeps its operations and its active class', async () => {
+  let tracker = costMeasured(startTurn(fresh(), { id: 't1', prompt: 'oi', now: 1 }), 1)
+  tracker = toolFinished(toolStarted(tracker, edit, 2), { use: edit, isError: false, now: 2, durationMs: 10 }).tracker
+  const asked = intervalNow(tracker)
+  expect(asked.active).toBe('guerreiro')
+
+  // While the answer is on its way: an explorer read ends and the turn goes back to the explorer.
+  tracker = toolFinished({ ...tracker, active: 'explorador' }, { use: read, isError: false, now: 3, durationMs: 10 }).tracker
+  const closed = costMeasured(tracker, 3, asked)
+
+  expect(closed.gold.spent).toEqual({ mago: 0, guerreiro: 2_000_000, explorador: 0 })
+  expect(closed.gold.ops).toEqual({ mago: 0, guerreiro: 0, explorador: 1 })
+
+  // With no operation in the asked interval the class active then gets it, not the one active when the answer comes.
+  const none = { ops: { mago: 0, guerreiro: 0, explorador: 0 }, active: 'mago' as const }
+  expect(costMeasured({ ...closed, active: 'explorador' }, 4, none).gold.spent.mago).toBe(1_000_000)
 })

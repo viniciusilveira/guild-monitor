@@ -53,6 +53,12 @@ let sessionStart = 0
 // The rate limits `session.usage` reports: a test sets `nextLimits` before `setup` and `limits` while the clock runs.
 let nextLimits: unknown[] = []
 let limits: unknown[] = []
+// The cost `session.usage` reports: a test sets `nextCost` before `setup` and `cost` while the clock runs.
+let nextCost: unknown = 1.5
+let cost: unknown = 1.5
+// A test that holds the answer of `session.usage`: set `usageGate`, wait for `usageHeld`, then release it.
+let usageGate: Promise<void> | undefined
+let usageHeld = false
 // A test that moves the time itself (`jump`) instead of letting a fake clock tick through it: `nextFast` before
 // `setup`, then `fakeNow` is what `$.clock.now()` answers. The engine still calls the `clock.every` callback of the
 // plugin in a loop, but it reads `limits`, which is empty in these tests: the readings come only from `jump`.
@@ -72,6 +78,10 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   nextStart = 0
   limits = nextLimits
   nextLimits = []
+  cost = nextCost
+  nextCost = 1.5
+  usageGate = undefined
+  usageHeld = false
   isFast = nextFast
   nextFast = false
   fakeNow = START
@@ -83,7 +93,14 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   }
   mountStore(on)
   on('session.measure', async (_$, e) => ({ changed: (e as { changed: string[] }).changed }) as never)
-  on('session.usage', async () => ({ value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: limits, cost: { usd: 1.5 } } }) as never)
+  on('session.usage', async () => {
+    if (usageGate !== undefined) {
+      usageHeld = true
+      await usageGate
+    }
+
+    return { value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: limits, cost: { usd: cost } } } as never
+  })
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
   on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }) as never)
@@ -1575,4 +1592,261 @@ test('tokens C17: every demo scene shows made-up tokens', async ($, on) => {
   // Back to the real session: what happened during the scenes was not counted.
   await $.command.run({ command: 'guild', args: 'off' } as never)
   expect(await tokenTexts($)).toEqual([])
+})
+
+// The gold by class: the cost moves by hand, one `session.measure` per interval, the operations in between.
+const measureCost = async ($: Engine, usd: unknown) => {
+  cost = usd
+  await $.session.measure({ context: { percent: 30 }, rateLimits: [], cost: { usd }, changed: ['cost'] } as never)
+}
+
+const GOLD_LINE = /~\$/
+const goldTexts = async ($: Engine, columns = 60) => (await panelTexts($, columns)).filter(text => GOLD_LINE.test(text))
+
+// The Mage spends $1.20 (TodoWrite), the Warrior $1.71 (Edit), the Explorer $0.51 (Read): $3.42 from the base of $1.50.
+const split342 = async ($: Engine) => {
+  await call($, 'TodoWrite')
+  await measureCost($, 2.7)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 4.41)
+  await call($, 'Read', { file_path: '/x/a.ts' })
+  await measureCost($, 4.92)
+}
+
+const FULL_LINES = ['Mago ~$1.20 (35%)', 'Guerreiro ~$1.71 (50%)', 'Explorador ~$0.51 (15%)']
+
+test('gold C18: the panel shows the split between the counters and the session time', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await split342($)
+
+  for (const columns of [40, 60]) {
+    const texts = await panelTexts($, columns)
+    const counters = texts.findIndex(text => /bugs \d+$/.test(text))
+    const session = texts.findIndex(text => text.startsWith('sessão'))
+
+    expect(texts.filter(text => GOLD_LINE.test(text))).toEqual(FULL_LINES)
+    expect(texts.indexOf(FULL_LINES[0] as string)).toBe(counters + 1)
+    // The session cost $1.50 before the split began: the dim caption comes under the three lines.
+    expect(texts[counters + 4]).toBe('desde a abertura')
+    expect(session).toBe(counters + 5)
+  }
+})
+
+test('gold C19: the 20 column panel keeps the three lines within its width', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await split342($)
+
+  expect(await goldTexts($, 20)).toEqual(['Mag ~$1.20 35%', 'Gue ~$1.71 50%', 'Exp ~$0.51 15%'])
+
+  // Four-digit dollars: still the same form for the three lines, none past 20 columns.
+  await call($, 'Edit', EDIT)
+  await measureCost($, 4.92 + 12_345.67)
+  const texts = await goldTexts($, 20)
+  expect(texts.every(text => text.length <= 20)).toBe(true)
+  expect(texts).toEqual(['Mag ~$1.20 0%', 'Gue ~$12347.38 100%', 'Exp ~$0.51 0%'])
+})
+
+test('gold C20: no line before a change and none in the bands, the compact one keeping its eight lines', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
+  await fast($, on)
+  await call($, 'Edit', EDIT)
+  // An operation without a later measurement, and a measurement that did not change the cost.
+  expect(await goldTexts($)).toEqual([])
+  await measureCost($, 1.5)
+  expect(await goldTexts($)).toEqual([])
+
+  await split342($)
+  expect((await goldTexts($)).length).toBe(3)
+
+  const compact = await mountBand($, 60, 8)
+  const lines = (await compact.findAll({ type: 'Text' })).map(item => item.text as string)
+  await compact.unmount()
+  expect(lines.length).toBeLessThanOrEqual(8)
+  expect(lines.some(text => GOLD_LINE.test(text))).toBe(false)
+  expect(lines.some(text => /Mago|Guerreiro|Explorador/.test(text) && /%/.test(text))).toBe(false)
+
+  const full = await bandItems($, 120, 20)
+  expect(full.some(item => GOLD_LINE.test(item.text))).toBe(false)
+})
+
+test('gold C21: a clear or a new session takes the lines away until a new change', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await split342($)
+  expect((await goldTexts($)).length).toBe(3)
+
+  // A /clear: the cost starts again, lower. The lines go; what follows counts from the new base.
+  await measureCost($, 0.4)
+  expect(await goldTexts($)).toEqual([])
+  await call($, 'Edit', EDIT)
+  await measureCost($, 0.9)
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$0.50 (100%)', 'Explorador ~$0.00 (0%)'])
+
+  // A new session: a fresh guild reading its own base.
+  cost = 9
+  await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
+  expect(await goldTexts($)).toEqual([])
+  await $.turn.start({ text: 'oi', turnId: 't2' } as never)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 10)
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
+})
+
+test('gold C22: the 2 second reading and the session measurement both attribute to the operation class', OPTIONS, async ($, on) => {
+  const clock = await setup($, on)
+  await clock.advance(100)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+  expect(await goldTexts($)).toEqual([])
+
+  // The clock reads the session again every two seconds and finds the cost higher.
+  cost = 2.5
+  await clock.advance(2_100)
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
+
+  await call($, 'Read', { file_path: '/x/a.ts' })
+  await measureCost($, 3.5)
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (50%)', 'Explorador ~$1.00 (50%)'])
+})
+
+test('gold C14: subagent calls are not operations', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await call($, 'Edit', EDIT)
+  for (const tool of ['Read', 'Grep', 'Read', 'WebSearch']) await call($, tool, { file_path: '/x/a.ts', agentId: 'sub1' })
+  await measureCost($, 2.5)
+  // Four explorer calls ran inside a subagent: none counts, the whole change is the warrior's.
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
+
+  // Only subagent calls in the interval: the change goes to the active class (still the warrior's turn).
+  await call($, 'TodoWrite', { agentId: 'sub1' })
+  await call($, 'Read', { file_path: '/x/a.ts', agentId: 'sub1' })
+  await measureCost($, 4.5)
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$3.00 (100%)', 'Explorador ~$0.00 (0%)'])
+})
+
+test('gold C23: nothing about the split reaches the store, the trace or a toast', OPTIONS, async ($, on) => {
+  const writes: string[] = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 157 } } : undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push(JSON.stringify([e.key, e.value]))
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(JSON.stringify(e))
+
+      return { value: undefined } as never
+    })
+  }
+  nextFast = true
+  nextCost = 1.11
+  await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 7.77)
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 1_000 } as never)
+  await call($, 'TodoWrite')
+  await measureCost($, 8.88)
+  expect((await goldTexts($)).length).toBe(3)
+
+  const trace = ((await $.command.run({ command: 'guild', args: 'trace' } as never)) as { text: string }).text
+  expect(toasts.length).toBeGreaterThan(0)
+  expect(writes.length).toBeGreaterThan(2)
+  expect([...writes, ...toasts, trace].join('\n')).not.toMatch(/~\$|ouro|gold|spent|micros|6[,.]66|1[,.]11|6660000|1110000|8[,.]88|7[,.]77|7770000|8880000/)
+})
+
+test('gold C25: every demo scene shows the made-up split in the panel', OPTIONS, async ($, on) => {
+  await setup($, on)
+  expect(DEMO_SCENES.length).toBe(6)
+
+  for (const scene of DEMO_SCENES) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+
+    expect(await goldTexts($, 60)).toEqual(FULL_LINES)
+    expect(await noteIn($, 60)).toBe(undefined)
+    expect(await goldTexts($, 20)).toEqual(['Mag ~$1.20 35%', 'Gue ~$1.71 50%', 'Exp ~$0.51 15%'])
+  }
+})
+
+test('gold C13b: a call a hook denied is not an operation of the interval', OPTIONS, async ($, on) => {
+  await fast($, on)
+  refused.add('Edit')
+  await call($, 'Read', { file_path: '/x/a.ts' })
+  await call($, 'Edit', EDIT)
+  await measureCost($, 2.5)
+
+  // Only the explorer's read ran: the denied edit would have taken half of the $1.00.
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$0.00 (0%)', 'Explorador ~$1.00 (100%)'])
+})
+
+const NOTE = 'desde a abertura'
+const noteIn = async ($: Engine, columns: number) => (await panelItems($, columns)).find(item => item.text === NOTE)
+
+test('gold C30: a split that began after the session had cost something has a dim caption under the lines', OPTIONS, async ($, on) => {
+  await fast($, on)
+  await split342($)
+
+  const items = await panelItems($, 60)
+  const last = items.findIndex(item => item.text === 'Explorador ~$0.51 (15%)')
+  expect(items[last + 1]).toEqual({ text: NOTE, color: undefined, dim: true })
+
+  expect((await noteIn($, 20))?.dim).toBe(true)
+  // Too narrow for the caption (16 columns) but not for the lines (14): the caption goes, the lines stay.
+  expect(await noteIn($, 15)).toBe(undefined)
+  expect((await goldTexts($, 15)).length).toBe(3)
+
+  // The bands do not show the split and so not the caption either.
+  expect((await bandItems($, 120, 20)).some(item => item.text === NOTE)).toBe(false)
+  const compact = await mountBand($, 60, 8)
+  const lines = (await compact.findAll({ type: 'Text' })).map(item => item.text as string)
+  await compact.unmount()
+  expect(lines.includes(NOTE)).toBe(false)
+})
+
+test('gold C31: a split that began at zero has no caption, and a clear that rebases above zero has one', OPTIONS, async ($, on) => {
+  nextFast = true
+  nextCost = 0
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 1.2)
+  expect((await goldTexts($)).length).toBe(3)
+  expect(await noteIn($, 60)).toBe(undefined)
+
+  await measureCost($, 0.4)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 0.9)
+  expect((await noteIn($, 60))?.text).toBe(NOTE)
+
+  // A clear down to exactly zero starts a split from nothing again: no caption.
+  await measureCost($, 0)
+  await call($, 'Edit', EDIT)
+  await measureCost($, 0.5)
+  expect((await goldTexts($)).length).toBe(3)
+  expect(await noteIn($, 60)).toBe(undefined)
+})
+
+test('gold C32: an operation that finishes while the cost is being read weighs on the next interval', OPTIONS, async ($, on) => {
+  const clock = await setup($, on)
+  await clock.advance(100)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+
+  // The 2 second reading asks for the cost; the answer ($1.00 more) is held while a read finishes.
+  cost = 2.5
+  let release = () => {}
+  usageGate = new Promise<void>(resolve => (release = resolve))
+  const reading = clock.advance(2_100)
+  await until(() => usageHeld, 'the held reading of the session')
+  await call($, 'Read', { file_path: '/x/a.ts' })
+  usageGate = undefined
+  release()
+  await reading
+
+  // The interval it closed was the Edit's alone: the read, which ended during the wait, is not in it.
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
+
+  // The read weighs on the next interval.
+  await measureCost($, 3.5)
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (50%)', 'Explorador ~$1.00 (50%)'])
 })

@@ -5,6 +5,7 @@ import { animationFor, bugAt, DEFAULTS } from './guild'
 import { doingOf } from './doing'
 import type { History } from './forecast'
 import { EMPTY_HISTORY, forecastLine } from './forecast'
+import { goldLines } from './gold'
 import type { Tracker } from './tracker'
 import { lineOf, modelLabel } from './tokens'
 import { CLASSES, progressOf } from './xp'
@@ -103,6 +104,8 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     stamina: percentLeft(usage.contextPercent),
     manaResetsAt: hours?.resetsAt ?? null,
     costUsd: usage.costUsd ?? null,
+    gold: goldLines(tracker.gold),
+    goldPartial: tracker.gold.base > 0,
     counters: { combo: tracker.counters.combo, best: tracker.counters.best, bugs: tracker.counters.bugs },
     recent: [...tracker.recent],
     doing: doingOf(tracker.running),

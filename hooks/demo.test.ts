@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { choiceOf, demoState, SCENES, sceneOf } from './demo'
 import { DEFAULTS } from './guild'
+import { goldTotal } from './gold'
 import { buildView } from './view'
 
 const NOW = 5_000_000
@@ -83,4 +84,22 @@ test('demo doing: the class scenes have a call in progress and the rest scenes n
   expect(viewOf('mago').doing).toEqual({ verb: 'planejando', target: null })
   expect(viewOf('cansado').doing).toBe(null)
   expect(viewOf('dormindo').doing).toBe(null)
+})
+
+test('gold C24: every demo scene splits the demo cost', async () => {
+  expect(SCENES.length).toBe(6)
+
+  for (const scene of SCENES) {
+    const state = demoState(scene, NOW)
+    const view = buildView(state.tracker, state.usage, NOW)
+
+    expect(view.gold).toEqual([
+      { cls: 'mago', micros: 1_200_000, percent: 35 },
+      { cls: 'guerreiro', micros: 1_710_000, percent: 50 },
+      { cls: 'explorador', micros: 510_000, percent: 15 },
+    ])
+    // The demo's split begins at zero: it adds up to the whole cost, so no caption.
+    expect(view.goldPartial).toBe(false)
+    expect(goldTotal(state.tracker.gold)).toBe(Math.round((state.usage.costUsd ?? 0) * 1e6))
+  }
 })

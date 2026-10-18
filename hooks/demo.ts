@@ -3,6 +3,8 @@ import { DEFAULTS } from './guild'
 import type { Counters } from './counters'
 import type { Tokens } from './tokens'
 import { addTurn, NO_TOKENS } from './tokens'
+import type { Gold } from './gold'
+import { goldMeasured, goldOperation, NO_GOLD } from './gold'
 import type { Tracker } from './tracker'
 import { callStarted, createTracker, startTurn, toolFinished, toolStarted } from './tracker'
 import type { History } from './forecast'
@@ -36,6 +38,9 @@ const DEMO_SESSION_MS = 65 * MINUTE_MS
 const DEMO_TURN_MS = 32_000
 const DEMO_LAST_TURN_MS = 4 * MINUTE_MS
 
+// The cost every scene shows, and the one the made-up split adds up to.
+const DEMO_COST_USD = 3.42
+
 const DEMO_COUNTERS: Counters = { combo: 7, best: 9, bugs: 3 }
 
 // Made-up tokens through the code the real ones go through: an earlier turn, the last one (142k of input, 87% from
@@ -53,6 +58,18 @@ const demoTokens = (): Tokens => {
   const last = addTurn(earlier, usage(6_000, 123_540, 12_460, 18_000, model), false)
 
   return addTurn(last, usage(12_000, 11_400, 6_600, 4_100, model), true)
+}
+
+// Made-up gold through the code the real one goes through: from $0 to the demo's $3.42, in three readings that
+// each belong to one class (Mage $1.20, Warrior $1.71, Explorer $0.51).
+const demoGold = (): Gold => {
+  const steps = [
+    ['mago', 1.2],
+    ['guerreiro', 2.91],
+    ['explorador', DEMO_COST_USD],
+  ] as const
+
+  return steps.reduce((gold, [cls, usd]) => goldMeasured(goldOperation(gold, cls), usd, cls), goldMeasured(NO_GOLD, 0, 'mago'))
 }
 
 const demoGuild = () => {
@@ -92,7 +109,7 @@ const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: T
       { kind: 'seven_day', percentUsed: 28, resetsAt: new Date(now + 2 * 24 * 60 * MINUTE_MS).toISOString() },
       { kind: 'five_hour', percentUsed: 55, resetsAt: new Date(now + 133 * MINUTE_MS).toISOString() },
     ],
-    costUsd: 3.42,
+    costUsd: DEMO_COST_USD,
     startedAt: now - DEMO_SESSION_MS,
   }
 
@@ -129,5 +146,5 @@ export const demoState = (scene: Scene, now: number, settings: Settings = DEFAUL
   // Made-up scores; the bug scene has just lost its combo to the failing call.
   const counters: Counters = scene === 'bug' ? { ...DEMO_COUNTERS, combo: 0 } : DEMO_COUNTERS
 
-  return { tracker: { ...state.tracker, counters, recent: demoHistory(now), tokens: demoTokens() }, usage: state.usage, history: demoReadings(now, state.usage) }
+  return { tracker: { ...state.tracker, counters, recent: demoHistory(now), tokens: demoTokens(), gold: demoGold() }, usage: state.usage, history: demoReadings(now, state.usage) }
 }

@@ -119,7 +119,7 @@ The side panel shows two timers, just above the latest operations: `sessão 1h05
 
 ## Combo and defeated bugs
 
-The side panel has a line of counters right above the session and turn timers, for example `combo x7 · melhor x9 · bugs 3`: the **combo** (operations in a row that finished without error), the **best combo** of the session (`melhor`) and the **bugs defeated** in the session. The labels are in Portuguese, like the rest of the interface.
+The side panel has a line of counters above the gold split and the session and turn timers, for example `combo x7 · melhor x9 · bugs 3`: the **combo** (operations in a row that finished without error), the **best combo** of the session (`melhor`) and the **bugs defeated** in the session. The labels are in Portuguese, like the rest of the interface.
 
 - **Combo.** It grows with every operation that finishes without error and resets on a failure; the failure still raises the bug as before. Calls you or a hook refused, and calls made by subagents, are ignored: they neither raise nor reset it (the same rule as the XP).
 - **Hidden below 3.** The combo and the best combo only show from 3 on, so the panel is not filled with `x1`. Before that the line is just `bugs 0`.
@@ -127,6 +127,29 @@ The side panel has a line of counters right above the session and turn timers, f
 - **Memory only.** Nothing is saved to the store, the `/guild trace` log or a toast, and everything starts over with the session. Lifetime totals are a separate feature.
 - **Bottom band.** It does not show the counters, so the compact band's 8 lines still hold.
 - **Demo scenes.** All of them show made-up values, `combo x7 · melhor x9 · bugs 3`; the `bug` scene has just lost its combo and shows `melhor x9 · bugs 3`.
+
+## Gold by class (estimate)
+
+The side panel splits the session's cost between the three characters, between the counters and the session timer:
+
+```
+Mago ~$1.20 (35%)
+Guerreiro ~$1.71 (50%)
+Explorador ~$0.51 (15%)
+```
+
+It is an **estimate**, not accounting: that is what the `~` stands for. The cost arrives in separate readings (every 2 seconds and whenever the engine reports a measurement) and the plugin does not know which call caused which part of it.
+
+- **The rule.** The change in cost between two readings goes to the class of the operations that finished in that interval. If more than one class worked in it, the change is split in proportion to each class's number of operations; with no operation (the model only answered) it goes to the active class. The first reading is only the starting point: it attributes nothing, so on a resumed session the split adds up to what was spent since the plugin began to watch.
+- **Always adds up.** The three amounts add up exactly to the change in cost since that starting point (the money is counted in whole micro-dollars, so there is no floating point drift). The percentages add up to 100: each is rounded down and the rest goes to the biggest fractions. The amounts are shown rounded to cents.
+- **Resumed sessions.** The first reading is only the starting point, so on a resumed session the three lines add up to less than the `ouro` line (the whole session). When that starting cost is above zero, a dim caption, `desde a abertura`, sits right under the lines (it is left out when the panel is too narrow for it, and a new session, which starts at zero, has none).
+- **Odd readings.** A cost that did not change attributes nothing. A cost that drops (a `/clear` starts the session's cost over) clears the split and starts again from the new value. A reading that is missing, `NaN`, negative or over a billion dollars is ignored altogether.
+- **Operations.** Every tool call of the main agent that finishes inside a turn counts, whether it worked or failed. Calls you or a hook refused do not. Calls made by subagents are ignored (the same guard as the XP and the combo, `agentId`): what a subagent costs is part of the session's cost and goes to the main agent's class that ran in the interval.
+- **No lines before a change.** Until the cost has changed once, the lines are not shown.
+- **Narrow panel.** The three lines always use the same form, the longest that fits: `Mago ~$1.20 (35%)`, then `Mago ~$1.20 35%`, then `Mag ~$1.20 35%`, then just `~$1.20 35%`; if not even that fits, the lines are left out.
+- **Session only.** Nothing is saved to the store, the `/guild trace` log or a toast, and everything starts over with the session. A history by class is a separate feature.
+- **Bottom band.** It does not show the split, so the compact band's 8 lines still hold.
+- **Demo scenes.** All of them show a made-up split that adds up to the demo's $3.42: `Mago ~$1.20 (35%)`, `Guerreiro ~$1.71 (50%)` and `Explorador ~$0.51 (15%)`.
 
 ## Tokens and cache hit rate
 
@@ -270,7 +293,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `gold.ts` (gold split by class), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 

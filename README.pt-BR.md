@@ -119,7 +119,7 @@ O painel lateral mostra dois timers, logo acima das últimas operações: `sess�
 
 ## Combo e bugs derrotados
 
-O painel lateral tem uma linha de contadores logo acima dos timers de sessão e de turno, por exemplo `combo x7 · melhor x9 · bugs 3`: o **combo** (operações seguidas que terminaram sem erro), o **melhor combo** da sessão e os **bugs derrotados** na sessão.
+O painel lateral tem uma linha de contadores logo acima da divisão do ouro e dos timers de sessão e de turno, por exemplo `combo x7 · melhor x9 · bugs 3`: o **combo** (operações seguidas que terminaram sem erro), o **melhor combo** da sessão e os **bugs derrotados** na sessão.
 
 - **Combo.** Cresce a cada operação que termina sem erro e zera numa falha; a falha ainda levanta o bug, como antes. Chamadas que você ou um hook recusaram, e chamadas de subagentes, são ignoradas: não sobem nem zeram o combo (a mesma regra do XP).
 - **Escondido abaixo de 3.** O combo e o melhor combo só aparecem a partir de 3, para não encher o painel de `x1`. Antes disso a linha é só `bugs 0`.
@@ -127,6 +127,29 @@ O painel lateral tem uma linha de contadores logo acima dos timers de sessão e 
 - **Só em memória.** Nada vai ao store, ao registro do `/guild trace` nem a toast, e tudo recomeça com a sessão. Os totais vitalícios são outra funcionalidade.
 - **Barra inferior.** Não mostra os contadores, de modo que as 8 linhas da barra compacta continuam valendo.
 - **Cenas de demonstração.** Todas mostram valores fictícios, `combo x7 · melhor x9 · bugs 3`; a cena `bug` acabou de perder o combo e mostra `melhor x9 · bugs 3`.
+
+## Ouro por classe (estimativa)
+
+O painel lateral divide o custo da sessão entre os três personagens, entre os contadores e o timer de sessão:
+
+```
+Mago ~$1.20 (35%)
+Guerreiro ~$1.71 (50%)
+Explorador ~$0.51 (15%)
+```
+
+É uma **estimativa**, não contabilidade: é isso que o `~` quer dizer. O custo chega em leituras separadas (a cada 2 segundos e sempre que o engine informa uma medição) e o plugin não sabe qual chamada causou qual parte dele.
+
+- **A regra.** A variação do custo entre duas leituras vai para a classe das operações que terminaram nesse intervalo. Se mais de uma classe trabalhou nele, a variação é dividida em proporção ao número de operações de cada classe; sem operação (o modelo só respondeu), vai para a classe ativa. A primeira leitura é só o ponto de partida: não atribui nada, então numa sessão retomada a divisão soma o que foi gasto desde que o plugin começou a observar.
+- **Sempre fecha a conta.** Os três valores somam exatamente a variação do custo desde esse ponto de partida (o dinheiro é contado em micro-dólares inteiros, sem deriva de ponto flutuante). Os percentuais somam 100: cada um é arredondado para baixo e o resto vai para as maiores frações. Os valores aparecem arredondados em centavos.
+- **Sessões retomadas.** A primeira leitura é só o ponto de partida, então numa sessão retomada as três linhas somam menos que a linha `ouro` (a sessão inteira). Quando esse custo inicial é maior que zero, uma legenda apagada, `desde a abertura`, aparece logo abaixo das linhas (some se o painel for estreito demais para ela, e uma sessão nova, que começa em zero, não tem legenda).
+- **Leituras estranhas.** Um custo que não mudou não atribui nada. Um custo que cai (um `/clear` reinicia o custo da sessão) zera a divisão e recomeça do novo valor. Uma leitura ausente, `NaN`, negativa ou acima de um bilhão de dólares é ignorada por inteiro.
+- **Operações.** Toda chamada de ferramenta do agente principal que termina dentro de um turno conta, tenha dado certo ou falhado. Chamadas que você ou um hook recusaram não contam. Chamadas de subagentes são ignoradas (o mesmo guard do XP e do combo, `agentId`): o que um subagente custa faz parte do custo da sessão e vai para a classe do agente principal que rodou no intervalo.
+- **Sem linhas antes de uma variação.** Enquanto o custo não mudou uma vez, as linhas não aparecem.
+- **Painel estreito.** As três linhas usam sempre a mesma forma, a maior que cabe: `Mago ~$1.20 (35%)`, depois `Mago ~$1.20 35%`, depois `Mag ~$1.20 35%`, depois só `~$1.20 35%`; se nem essa couber, as linhas somem.
+- **Só da sessão.** Nada vai ao store, ao registro do `/guild trace` nem a toast, e tudo recomeça com a sessão. Um histórico por classe é outra funcionalidade.
+- **Barra inferior.** Não mostra a divisão, de modo que as 8 linhas da barra compacta continuam valendo.
+- **Cenas de demonstração.** Todas mostram uma divisão fictícia que soma os $3.42 do demo: `Mago ~$1.20 (35%)`, `Guerreiro ~$1.71 (50%)` e `Explorador ~$0.51 (15%)`.
 
 ## Tokens e taxa de acerto do cache
 
@@ -268,7 +291,7 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 - `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
 - `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
-- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
+- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `gold.ts` (ouro por classe), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).
 
