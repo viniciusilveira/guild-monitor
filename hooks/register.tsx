@@ -351,7 +351,7 @@ export const register: Register = (on, options) => {
     if (e.agentId !== undefined || scene !== undefined) return next(e)
 
     const now = await $.clock.now()
-    const done = completeTurn(tracker, { id: e.turnId, reason: e.reason, now })
+    const done = completeTurn(tracker, { id: e.turnId, reason: e.reason, now, durationMs: e.durationMs })
     tracker = done.tracker
     await publishView($, buildView(tracker, usage, now, settings), cache)
 

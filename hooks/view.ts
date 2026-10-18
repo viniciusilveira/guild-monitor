@@ -13,6 +13,8 @@ export type Usage = {
   contextPercent?: number
   rateLimits: readonly RateLimit[]
   costUsd?: number
+  // When the session began (`$.session.usage()`'s `startedAt`): a resumed one counts from its first launch, `/clear` starts it over.
+  startedAt?: number
 }
 
 // What `$.session.usage()` and `session.measure` carry, as far as the guild reads it.
@@ -20,12 +22,15 @@ export type SessionFigures = {
   context: { percent?: number }
   rateLimits: readonly RateLimit[]
   cost?: { usd: number }
+  // `session.measure` does not carry it, only `$.session.usage()` does.
+  startedAt?: number
 }
 
 export const usageFrom = (figures: SessionFigures): Usage => ({
   contextPercent: figures.context.percent,
   rateLimits: figures.rateLimits,
   costUsd: figures.cost?.usd,
+  startedAt: figures.startedAt,
 })
 
 // A figure the engine does not have at the moment (a window that has not been
@@ -39,11 +44,22 @@ export const mergeUsage = (known: Usage, fresh: Usage): Usage => {
     contextPercent: fresh.contextPercent ?? known.contextPercent,
     rateLimits: [...known.rateLimits.filter(limit => !kinds.has(limit.kind)), ...fresh.rateLimits],
     costUsd: fresh.costUsd ?? known.costUsd,
+    // A later start (a `/clear`) replaces the known one; a report that has none leaves it.
+    startedAt: fresh.startedAt ?? known.startedAt,
   }
 }
 
 const percentLeft = (used: number | undefined): number | null =>
   used === undefined ? null : Math.max(0, Math.min(100, Math.round(100 - used)))
+
+const wholeSeconds = (ms: number): number => Math.max(0, Math.floor(ms / 1000))
+
+// How long the turn has run, or the duration the last one ended with; null before the first.
+const turnSecondsOf = (tracker: Tracker, now: number): number | null => {
+  if (tracker.turn !== null) return wholeSeconds(now - tracker.turn.startedAt)
+
+  return tracker.lastTurnMs === null || !Number.isFinite(tracker.lastTurnMs) ? null : wholeSeconds(tracker.lastTurnMs)
+}
 
 export const buildView = (tracker: Tracker, usage: Usage, now: number, settings: Settings = DEFAULTS): ViewModel => {
   const snapshot: Snapshot = {
@@ -77,6 +93,8 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     costUsd: usage.costUsd ?? null,
     recent: [...tracker.recent],
     doing: doingOf(tracker.running),
+    sessionSeconds: usage.startedAt === undefined ? null : wholeSeconds(now - usage.startedAt),
+    turnSeconds: turnSecondsOf(tracker, now),
   }
 }
 
@@ -158,11 +176,20 @@ export const untilReset = (resetsAt: string | null, now: number): string => {
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
 }
 
-// "agora", "3min" or "1h05": how long ago something happened.
-export const agoText = (at: number, now: number): string => {
-  const minutes = Math.floor(Math.max(0, now - at) / 60_000)
-  if (minutes < 1) return 'agora'
+// "32s", "4min" or "1h05": a length of time, in its short form. Negative counts as zero.
+export const durationText = (ms: number): string => {
+  const seconds = Math.floor(Math.max(0, ms) / 1000)
+  if (seconds < 60) return `${seconds}s`
+
+  const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}min`
 
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
+}
+
+// "agora", "3min" or "1h05": how long ago something happened.
+export const agoText = (at: number, now: number): string => {
+  const elapsed = Math.max(0, now - at)
+
+  return elapsed < 60_000 ? 'agora' : durationText(elapsed)
 }
