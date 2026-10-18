@@ -48,11 +48,13 @@ type Spec = {
   gapMs: number
   // The samples in the window must cover at least this much time.
   minSpanMs: number
+  // How long the subscription window itself is: a forecast beyond it, with no reset to compare with, is not shown.
+  lengthMs: number
 }
 
 const SPECS: Record<WindowKind, Spec> = {
-  five_hour: { windowMs: HOUR_MS, gapMs: MINUTE_MS, minSpanMs: 10 * MINUTE_MS },
-  seven_day: { windowMs: 2 * DAY_MS, gapMs: 30 * MINUTE_MS, minSpanMs: 2 * HOUR_MS },
+  five_hour: { windowMs: HOUR_MS, gapMs: MINUTE_MS, minSpanMs: 10 * MINUTE_MS, lengthMs: 5 * HOUR_MS },
+  seven_day: { windowMs: 2 * DAY_MS, gapMs: 30 * MINUTE_MS, minSpanMs: 2 * HOUR_MS, lengthMs: 7 * DAY_MS },
 }
 
 const KINDS: readonly WindowKind[] = ['five_hour', 'seven_day']
@@ -148,7 +150,8 @@ export const forecastOf = (series: Series, now: number, kind: WindowKind): Forec
   const left = Math.max(0, (((100 - last.used) * span) / points) - (now - last.at))
   const ms = roundUp5(left) ?? STEP_MS
   const reset = instantOf(series.resetsAt)
-  if (reset === null || reset <= now) return { kind: 'runs', ms, urgent: false }
+  // Without a reset to compare with, a forecast longer than the window itself is a pace too slow to mean anything.
+  if (reset === null || reset <= now) return ms > spec.lengthMs ? none : { kind: 'runs', ms, urgent: false }
 
   return left >= reset - now ? { kind: 'lasts' } : { kind: 'runs', ms, urgent: true }
 }

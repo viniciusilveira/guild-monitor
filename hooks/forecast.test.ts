@@ -150,9 +150,10 @@ test('forecast C7: a missing, invalid or past resetsAt never lasts and is never 
     expect(text(forecast)).toBe('esgota em ~2h20')
   }
 
-  // A very slow pace is not "lasts until the reset" when there is no reset to compare with.
+  // A very slow pace is not "lasts until the reset" when there is no reset to compare with: it is longer than
+  // the window, so nothing is shown (see C25).
   const slow = forecastOf(build([[0, 40], [30, 41], [60, 42]]), at(60), 'five_hour')
-  expect(slow).toEqual({ kind: 'runs', ms: 1740 * MIN, urgent: false })
+  expect(slow).toEqual({ kind: 'none' })
 })
 
 test('forecast C8: rounds up to steps of 5 minutes and gives no number for 0, negative or infinite', () => {
@@ -278,4 +279,29 @@ test('forecast C13: a reading without the window records nothing for it', () => 
 
   // The forecast of a window that was never read is nothing.
   expect(forecastOf(later.five_hour, at(60), 'five_hour')).toEqual({ kind: 'none' })
+})
+
+test('forecast C25: a forecast longer than its window is not shown without a reset to compare with', () => {
+  // 40, 41, 42 in an hour on the 5h window leave 58 points: 29 hours. The week: 10, 11, 12 in two days leave 88 days.
+  const hours = build([[0, 40], [30, 41], [60, 42]])
+  expect(forecastOf(hours, at(60), 'five_hour')).toEqual({ kind: 'none' })
+  expect(forecastOf(hours, at(60), 'five_hour')).not.toMatchObject({ kind: 'runs' })
+
+  const week = build([[0, 10], [24 * 60, 11], [48 * 60, 12]], undefined, EMPTY_SERIES, 'seven_day')
+  expect(forecastOf(week, at(48 * 60), 'seven_day')).toEqual({ kind: 'none' })
+  // The same with an invalid or a past reset.
+  expect(forecastOf(build([[0, 40], [30, 41], [60, 42]], 'amanhã'), at(60), 'five_hour')).toEqual({ kind: 'none' })
+  expect(forecastOf(build([[0, 40], [30, 41], [60, 42]], resetIn(10)), at(60), 'five_hour')).toEqual({ kind: 'none' })
+
+  // The window itself still shows: exactly 5 hours (38, 39, 40 in 10 minutes leave 60 points at 0.2 a minute)...
+  expect(forecastOf(build([[0, 38], [5, 39], [10, 40]]), at(10), 'five_hour')).toEqual({ kind: 'runs', ms: 300 * MIN, urgent: false })
+  // ... and a little more does not (300.5 minutes round up to 305).
+  expect(forecastOf(build([[0, 37.9], [5, 38.9], [10, 39.9]]), at(10), 'five_hour')).toEqual({ kind: 'none' })
+  // Exactly 7 days (91, 92, 93 in two days leave 7 points a day) shows, a little more does not.
+  const seven = (used: number) => build([[0, used], [24 * 60, used + 1], [48 * 60, used + 2]], undefined, EMPTY_SERIES, 'seven_day')
+  expect(forecastOf(seven(91), at(48 * 60), 'seven_day')).toEqual({ kind: 'runs', ms: 7 * DAY, urgent: false })
+  expect(forecastOf(seven(90.9), at(48 * 60), 'seven_day')).toEqual({ kind: 'none' })
+
+  // With a reset to compare with, a long pace is "dura até o reset", as before.
+  expect(forecastOf(build([[0, 40], [30, 41], [60, 42]], resetIn(200)), at(60), 'five_hour')).toEqual({ kind: 'lasts' })
 })
