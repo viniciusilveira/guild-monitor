@@ -39,6 +39,8 @@ export type ViewModel = {
   stamina: number | null
   manaResetsAt: string | null
   costUsd: number | null
+  // The session's scores, in memory only: operations in a row that worked, the best such run and bugs defeated.
+  counters: { combo: number; best: number; bugs: number }
   // The latest payments of XP, oldest first.
   recent: RecentOp[]
   // The latest call that has not finished, or null when nothing runs.
