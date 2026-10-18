@@ -107,6 +107,17 @@ The side panel shows two timers, just above the latest operations: `sessão 1h05
 - **Redraws.** The timers are kept in whole seconds, so the view changes (and the panel redraws) once per second, not at every animation frame. Nothing about them is saved to the store, the `/guild trace` log or a toast.
 - **Demo scenes.** All of them show both timers: `explorador`, `mago`, `guerreiro` and `bug` with a session open for `1h05` and a turn running for `32s`; `cansado` and `dormindo` with `1h05` and the last turn's `4min`.
 
+## Combo and defeated bugs
+
+The side panel has a line of counters right above the session and turn timers, for example `combo x7 · melhor x9 · bugs 3`: the **combo** (operations in a row that finished without error), the **best combo** of the session (`melhor`) and the **bugs defeated** in the session. The labels are in Portuguese, like the rest of the interface.
+
+- **Combo.** It grows with every operation that finishes without error and resets on a failure; the failure still raises the bug as before. Calls you or a hook refused, and calls made by subagents, are ignored: they neither raise nor reset it (the same rule as the XP).
+- **Hidden below 3.** The combo and the best combo only show from 3 on, so the panel is not filled with `x1`. Before that the line is just `bugs 0`.
+- **Bugs defeated.** Each defeat counts once: the moment a live bug goes down, the same one that pays the XP bonus.
+- **Memory only.** Nothing is saved to the store, the `/guild trace` log or a toast, and everything starts over with the session. Lifetime totals are a separate feature.
+- **Bottom band.** It does not show the counters, so the compact band's 8 lines still hold.
+- **Demo scenes.** All of them show made-up values, `combo x7 · melhor x9 · bugs 3`; the `bug` scene has just lost its combo and shows `melhor x9 · bugs 3`.
+
 ## Side panel
 
 On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 columns or more), the guild opens as a **panel to the left of the conversation**:
@@ -225,7 +236,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `demo.ts`. Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 
