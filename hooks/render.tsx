@@ -7,7 +7,7 @@ import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
 import { STATS_COLUMNS } from './sidebar'
-import { agoText, bar, COLORS, costText, healthColor, METER_COLORS, NAMES, percentText, restText, stateText, untilReset } from './view'
+import { agoText, bar, COLORS, costText, healthColor, METER_COLORS, NAMES, percentText, restText, untilReset } from './view'
 
 // The cells of one Raster, given its key, who it draws and at what size. The
 // caller keeps track of what it handed out, to animate it later.
@@ -34,7 +34,8 @@ const doingText = (ui: Elements['terminal'], view: ViewModel, active: Char, colu
   )
 }
 
-// The lines of the active character's stats, each in the color of its meter.
+// The lines of the active character's stats, each in the color of its meter. What the character does (or
+// that it rests, is tired or sleeps) is the line above them, so the stats do not repeat it.
 const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now: number) => {
   const { Text } = ui
   const xpPercent = active.xpNeeded > 0 ? Math.round((active.xpInLevel / active.xpNeeded) * 100) : 0
@@ -43,9 +44,6 @@ const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now:
   return [
     <Text key="name" bold color={COLORS[active.cls]}>
       {`${NAMES[active.cls]} Nv.${active.level}`}
-    </Text>,
-    <Text key="state" dimColor>
-      {stateText(active.cls, active.anim)}
     </Text>,
     <Text key="xp" color={METER_COLORS.xp}>{`XP ${bar(xpPercent)} ${active.xpInLevel}/${active.xpNeeded}`}</Text>,
     <Text key="hp" color={healthColor(view.hp)}>{`HP ${bar(view.hp)} ${percentText(view.hp)}`}</Text>,
@@ -84,9 +82,10 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
         <Box flexDirection="column" width={INFO_COLUMNS} alignSelf="flex-start">
           {doingText(ui, view, active, INFO_COLUMNS)}
           {statLines(ui, view, active, now)}
-          {view.bug !== 'none' && !layout.bug && !layout.bugBelow && <Text color="red">bug na área!</Text>}
           {layout.bugBelow ? (
             <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
+          ) : view.bug !== 'none' && !layout.bug ? (
+            <Text color="red">bug na área!</Text>
           ) : (
             <Text dimColor>HP=7d MP=5h ST=ctx</Text>
           )}

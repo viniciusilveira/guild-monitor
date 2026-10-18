@@ -72,12 +72,12 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   return clock
 }
 
-const mountBand = ($: Engine) =>
+const mountBand = ($: Engine, bodyColumns = 120, maxRows = 20) =>
   $.ui.mount({
     plugin: 'guild-monitor',
     surface: 'terminal',
     component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120 } as never,
+    props: { hasSurvey: false, isWorking: false, maxRows, bodyColumns } as never,
     viewport: { columns: 120, rows: 40 } as never,
   })
 
@@ -508,4 +508,27 @@ test('screen doing: a store that fails after the tool ran never changes the resu
   // Each call reached the tool once: the failure of the record did not make the engine run it again.
   expect(runs).toEqual({ Edit: 1, Bash: 1 })
   expect(await panelShows($, /editando|executando/)).toBe(false)
+})
+
+test('screen doing: the info box of a compact band never has more lines than the character is tall', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
+  await setup($, on, tool => tool === 'Bash')
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  // Room for the stats but not for the other characters or the bug beside them: 8 rows, 60 columns.
+  const lines = async () => {
+    const band = await mountBand($, 60, 8)
+    const texts = (await band.findAll({ type: 'Text' })).map(item => item.text)
+    await band.unmount()
+
+    return texts
+  }
+
+  const quiet = await lines()
+  expect(quiet.length).toBe(8)
+  expect(quiet[0]).toBe('Guerreiro: de prontidão')
+
+  await call($, 'Bash', { command: 'npm test' })
+  const withBug = await lines()
+  expect(withBug).toContain('bug na área!')
+  expect(withBug.length).toBeLessThanOrEqual(8)
 })
