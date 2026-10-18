@@ -43,6 +43,11 @@ const until = async (check: () => boolean | Promise<boolean>, what: string): Pro
 const arrived = (tool: string) => until(() => entered.has(tool), `the ${tool} call`)
 type Says = (tool: string) => string | undefined
 
+// When the session began according to `session.usage`: a test sets `nextStart` before `setup`, and `sessionStart`
+// moves on its own afterwards, as a /clear does.
+let nextStart = 0
+let sessionStart = 0
+
 // The world beneath the guild plugin: a clock the test moves, a store holding a guild whose warrior is at level 3,
 // the session's figures and a tool runner that fails the calls the test says.
 const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = () => undefined, mountStore: (on: On) => void = on => mock.store(on, { 'guild.v1': { guerreiro: { xp: 200 } } })) => {
@@ -51,9 +56,11 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   thrown.clear()
   entered.clear()
   runs = {}
+  sessionStart = nextStart
+  nextStart = 0
   const clock = mock.clock(on, { now: START })
   mountStore(on)
-  on('session.usage', async () => ({ value: { startedAt: 0, context: { percent: 30 }, rateLimits: [], cost: { usd: 1.5 } } }) as never)
+  on('session.usage', async () => ({ value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: [], cost: { usd: 1.5 } } }) as never)
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
   on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }) as never)
@@ -531,4 +538,202 @@ test('screen doing: the info box of a compact band never has more lines than the
   const withBug = await lines()
   expect(withBug).toContain('bug na área!')
   expect(withBug.length).toBeLessThanOrEqual(8)
+})
+
+const HOUR_AND_5 = 65 * MINUTE
+
+test('timers C5: the panel shows the session time from the session start', { options: { layout: 'bar' } }, async ($, on) => {
+  nextStart = START - HOUR_AND_5
+  await setup($, on)
+
+  expect(await panelShows($, 'sessão 1h05')).toBe(true)
+})
+
+test('timers C6: a clear starts the session time over', { options: { layout: 'bar' } }, async ($, on) => {
+  nextStart = START - HOUR_AND_5
+  const clock = await setup($, on)
+  await clock.advance(100)
+  expect(await panelShows($, 'sessão 1h05')).toBe(true)
+
+  // The session is read again every two seconds: the next reading brings the new start.
+  sessionStart = START + 2_050
+  await clock.advance(2_000)
+  expect(await panelShows($, 'sessão 0s')).toBe(true)
+  expect(await panelShows($, /1h05/)).toBe(false)
+})
+
+test('timers C7: the turn time runs in the panel and in the band', { options: { layout: 'bar' } }, async ($, on) => {
+  nextStart = START - HOUR_AND_5
+  const clock = await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await clock.advance(32_000)
+
+  expect(await panelShows($, 'turno 32s')).toBe(true)
+
+  const band = await mountBand($)
+  const texts = (await band.findAll({ type: 'Text' })).map(item => item.text)
+  await band.unmount()
+  expect(texts).toContain('ouro $1.50 · turno 32s')
+  // The band carries no session time.
+  expect(texts.some(text => /sessão/.test(text))).toBe(false)
+})
+
+test('timers C8: the final duration is the event one and stays', { options: { layout: 'bar' } }, async ($, on) => {
+  const clock = await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await clock.advance(10_000)
+  expect(await panelShows($, 'turno 10s')).toBe(true)
+
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 7_000 } as never)
+  expect(await panelShows($, 'turno 7s')).toBe(true)
+
+  await clock.advance(60_000)
+  expect(await panelShows($, 'turno 7s')).toBe(true)
+
+  const band = await mountBand($)
+  const texts = (await band.findAll({ type: 'Text' })).map(item => item.text)
+  await band.unmount()
+  expect(texts).toContain('ouro $1.50')
+  expect(texts.some(text => /turno/.test(text))).toBe(false)
+})
+
+test('timers C9: a new turn starts the time over', { options: { layout: 'bar' } }, async ($, on) => {
+  const clock = await setup($, on)
+  await $.turn.start({ text: 'um', turnId: 't1' } as never)
+  await clock.advance(10_000)
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 7_000 } as never)
+  await clock.advance(5_000)
+
+  await $.turn.start({ text: 'dois', turnId: 't2' } as never)
+  expect(await panelShows($, 'turno 0s')).toBe(true)
+  await clock.advance(3_000)
+  expect(await panelShows($, 'turno 3s')).toBe(true)
+  expect(await panelShows($, /turno 7s/)).toBe(false)
+})
+
+test('timers C10: before any turn the panel shows no duration', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+
+  expect(await panelShows($, 'turno --')).toBe(true)
+})
+
+test('timers C11: the view is published once a second, not at every frame', { options: { layout: 'bar' } }, async ($, on) => {
+  nextStart = START
+  let writes = 0
+  const store = (on: On) => {
+    mock.store(on, { 'guild.v1': { guerreiro: { xp: 200 } } })
+    on('state.set', async (_$, e, next) => {
+      if ((e as { key?: string }).key === 'view') writes += 1
+
+      return next(e)
+    })
+  }
+  const clock = await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await clock.advance(100)
+  writes = 0
+
+  // 17 frames of 50 ms, all inside the same second.
+  await clock.advance(850)
+  expect(writes).toBe(0)
+
+  // The second changes: one publication, not one per frame.
+  await clock.advance(100)
+  expect(writes).toBe(1)
+
+  await clock.advance(950)
+  expect(writes).toBe(2)
+})
+
+test('timers C12: the compact band keeps its eight lines with the turn time', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
+  const clock = await setup($, on, tool => tool === 'Bash')
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Bash', { command: 'npm test' })
+  await clock.advance(32_000)
+
+  const band = await mountBand($, 60, 8)
+  const texts = (await band.findAll({ type: 'Text' })).map(item => item.text)
+  await band.unmount()
+
+  expect(texts).toContain('bug na área!')
+  expect(texts).toContain('ouro $1.50 · turno 32s')
+  expect(texts.length).toBeLessThanOrEqual(8)
+})
+
+test('timers C13: a narrow panel still shows both times', { options: { layout: 'bar' } }, async ($, on) => {
+  nextStart = START - HOUR_AND_5
+  const clock = await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await clock.advance(32_000)
+
+  expect(await panelShows($, 'sessão 1h05', 20)).toBe(true)
+  expect(await panelShows($, 'turno 32s', 20)).toBe(true)
+})
+
+test('timers C14: the times sit after the stats and before the operations', { options: { layout: 'bar' } }, async ($, on) => {
+  nextStart = START - HOUR_AND_5
+  const clock = await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+  await clock.advance(32_000)
+
+  for (const columns of [20, 60]) {
+    const panel = await mountPanel($, columns)
+    const texts = (await panel.findAll({ type: 'Text' })).map(item => item.text)
+    await panel.unmount()
+
+    const at = (text: string) => texts.indexOf(text)
+    expect(at('ouro $1.50')).toBeGreaterThan(-1)
+    expect(at('sessão 1h05')).toBeGreaterThan(at('ouro $1.50'))
+    expect(at('turno 32s')).toBe(at('sessão 1h05') + 1)
+    expect(at('Últimas operações')).toBe(at('turno 32s') + 1)
+  }
+})
+
+test('timers C15: the times never reach the store, the trace or a toast', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: string[] = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 159 } } : undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push(JSON.stringify([e.key, e.value]))
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(JSON.stringify(e))
+
+      return { value: undefined } as never
+    })
+  }
+  nextStart = START - 4_242_424
+  const clock = await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', EDIT)
+  await clock.advance(10_000)
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 7_777 } as never)
+
+  expect(toasts.length).toBeGreaterThan(0)
+  expect(new Set(writes.map(write => (JSON.parse(write) as [string])[0]))).toEqual(new Set(['guild.trace.v1', 'guild.v1']))
+  expect([...writes, ...toasts].join('\n')).not.toMatch(/7777|7_777|3242424|sessão|turno|durationMs|startedAt/)
+})
+
+test('timers C16: the working demo scenes show both times', async ($, on) => {
+  await setup($, on)
+
+  for (const scene of ['explorador', 'mago', 'guerreiro', 'bug']) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+    expect(await panelShows($, 'sessão 1h05')).toBe(true)
+    expect(await panelShows($, 'turno 32s')).toBe(true)
+  }
+})
+
+test('timers C17: the resting demo scenes show both times', async ($, on) => {
+  await setup($, on)
+
+  for (const scene of ['cansado', 'dormindo']) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+    expect(await panelShows($, 'sessão 1h05')).toBe(true)
+    expect(await panelShows($, 'turno 4min')).toBe(true)
+  }
 })

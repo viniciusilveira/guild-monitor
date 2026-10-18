@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { DEFAULTS, DEFEAT_MS } from './guild'
 import { chooseLayout } from './layout'
 import { completeTurn, createTracker, startTurn, toolFinished } from './tracker'
-import { bar, buildView, costText, frameAt, healthColor, mergeUsage, METER_COLORS, percentText, agoText, sheetIdFor, stateText, untilReset, usageFrom } from './view'
+import { bar, buildView, costText, durationText, frameAt, healthColor, mergeUsage, METER_COLORS, percentText, agoText, sheetIdFor, stateText, untilReset, usageFrom } from './view'
 import { addXp, emptyGuild } from './xp'
 
 const NOW = 1_000_000
@@ -84,7 +84,7 @@ test('the bug shows in the view and leaves once defeated for long enough', async
   tracker = toolFinished(tracker, { use: test1, isError: false, now: NOW + 10, durationMs: 0 }).tracker
   expect(buildView(tracker, usage(), NOW + 10).bug).toBe('defeated')
   expect(buildView(tracker, usage(), NOW + 10 + DEFEAT_MS).bug).toBe('none')
-  expect(completeTurn(tracker, { id: 't', reason: 'answer', now: NOW + 20 }).gain?.xp).toBe(3)
+  expect(completeTurn(tracker, { id: 't', reason: 'answer', now: NOW + 20, durationMs: 0 }).gain?.xp).toBe(3)
 })
 
 test('a loop wraps around and a one-shot animation rests on its last frame', async () => {
@@ -235,4 +235,67 @@ test('the view carries the history of XP payments', async () => {
   tracker = toolFinished(tracker, { use: { tool: 'Read' }, isError: false, now: NOW + 1, durationMs: 0 }).tracker
 
   expect(buildView(tracker, usage(), NOW + 2).recent).toEqual([{ cls: 'explorador', xp: 2, at: NOW + 1, tool: 'Read' }])
+})
+
+test('timers C1: durationText covers zero, seconds, minutes, hours and negative', async () => {
+  const cases: Array<[number, string]> = [
+    [0, '0s'],
+    [32_000, '32s'],
+    [59_900, '59s'],
+    [60_000, '1min'],
+    [4 * 60_000 + 59_000, '4min'],
+    [65 * 60_000, '1h05'],
+    [-5_000, '0s'],
+  ]
+
+  for (const [ms, text] of cases) expect(durationText(ms)).toBe(text)
+})
+
+test('timers C3: the session start comes from the usage figures and a new one wins', async () => {
+  const figures = { context: {}, rateLimits: [] }
+
+  expect(usageFrom({ ...figures, startedAt: 5 }).startedAt).toBe(5)
+  expect(usageFrom(figures).startedAt).toBe(undefined)
+  // A /clear brings a later start: it replaces the known one. A report without a start keeps it.
+  expect(mergeUsage(usage({ startedAt: 5 }), usage({ startedAt: 9 })).startedAt).toBe(9)
+  expect(mergeUsage(usage({ startedAt: 5 }), usage()).startedAt).toBe(5)
+
+  const sinceStart = (startedAt?: number) => buildView(createTracker(emptyGuild(), NOW), usage({ startedAt }), NOW).sessionSeconds
+  expect(sinceStart(NOW - 65 * 60_000)).toBe(3900)
+  expect(sinceStart(NOW - 1_999)).toBe(1)
+  expect(sinceStart(NOW + 5_000)).toBe(0)
+  expect(sinceStart(undefined)).toBe(null)
+})
+
+test('timers C4: the turn time runs, then keeps the duration the event reported', async () => {
+  const idle = createTracker(emptyGuild(), NOW)
+  expect(buildView(idle, usage(), NOW).turnSeconds).toBe(null)
+
+  const running = startTurn(idle, { id: 't1', prompt: 'oi', now: NOW })
+  expect(buildView(running, usage(), NOW).turnSeconds).toBe(0)
+  expect(buildView(running, usage(), NOW + 32_900).turnSeconds).toBe(32)
+
+  // Another turn's end changes nothing.
+  expect(completeTurn(running, { id: 'other', reason: 'answer', now: NOW + 10_000, durationMs: 1_000 }).tracker).toEqual(running)
+
+  // The duration is the event's, whatever the clock says, and it stays as time passes.
+  const done = completeTurn(running, { id: 't1', reason: 'answer', now: NOW + 10_000, durationMs: 7_000 }).tracker
+  expect(buildView(done, usage(), NOW + 10_000).turnSeconds).toBe(7)
+  expect(buildView(done, usage(), NOW + 70_000).turnSeconds).toBe(7)
+
+  // An interrupted or failed turn keeps its duration too; a new turn starts over.
+  const aborted = completeTurn(running, { id: 't1', reason: 'aborted', now: NOW + 10_000, durationMs: 4_000 }).tracker
+  expect(buildView(aborted, usage(), NOW + 20_000).turnSeconds).toBe(4)
+  const next = startTurn(done, { id: 't2', prompt: 'de novo', now: NOW + 80_000 })
+  expect(buildView(next, usage(), NOW + 81_000).turnSeconds).toBe(1)
+})
+
+test('timers C11b: the view is the same within a second and differs across it', async () => {
+  const tracker = startTurn(createTracker(emptyGuild(), NOW), { id: 't1', prompt: 'oi', now: NOW })
+  const at = (ms: number) => JSON.stringify(buildView(tracker, usage({ startedAt: NOW - 90_000 }), NOW + ms))
+
+  expect(at(1_050)).toBe(at(1_000))
+  expect(at(1_950)).toBe(at(1_000))
+  expect(at(2_000)).not.toBe(at(1_950))
+  expect(at(0)).not.toBe(at(1_000))
 })

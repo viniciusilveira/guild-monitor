@@ -16,6 +16,8 @@ export type Turn = {
   id: string
   prompt: string
   tools: ToolUse[]
+  // When the turn began (ms), for the timer on screen; it lives in memory only.
+  startedAt: number
 }
 
 // One payment of XP: who got it, how much, when, and for what (a tool, or the answer).
@@ -34,6 +36,8 @@ export type Tracker = {
   recent: readonly Entry[]
   // Calls in progress, oldest first: the last one is the most recent not yet finished.
   running: readonly Running[]
+  // How long the last turn that ended took, as its `turn.complete` reported it; null before the first.
+  lastTurnMs: number | null
 }
 
 export const createTracker = (guild: Guild, now: number): Tracker => ({
@@ -45,6 +49,7 @@ export const createTracker = (guild: Guild, now: number): Tracker => ({
   lastActivityAt: now,
   recent: [],
   running: [],
+  lastTurnMs: null,
 })
 
 // The class follows the turn as it unfolds: first the prompt, then the tools.
@@ -62,7 +67,7 @@ export const setPlanMode = (tracker: Tracker, planMode: boolean): Tracker =>
 export const startTurn = (tracker: Tracker, start: { id: string; prompt: string; now: number }): Tracker =>
   reclassify({
     ...tracker,
-    turn: { id: start.id, prompt: start.prompt, tools: [] },
+    turn: { id: start.id, prompt: start.prompt, tools: [], startedAt: start.now },
     running: [],
     lastActivityAt: start.now,
   })
@@ -131,12 +136,12 @@ export const tick = (tracker: Tracker, now: number): Tracker => {
 // more for the answer, and an interrupted one or one an API error killed only closes.
 export const completeTurn = (
   tracker: Tracker,
-  end: { id: string; reason: string; now: number },
+  end: { id: string; reason: string; now: number; durationMs: number },
 ): { tracker: Tracker; gain?: Gain } => {
   const turn = tracker.turn
   if (turn === null || turn.id !== end.id) return { tracker }
 
-  const idle: Tracker = { ...tracker, turn: null, running: [], lastActivityAt: end.now }
+  const idle: Tracker = { ...tracker, turn: null, running: [], lastActivityAt: end.now, lastTurnMs: end.durationMs }
   if (end.reason !== 'answer') return { tracker: idle }
 
   const added = addXp(tracker.guild, tracker.active, ANSWER_XP)

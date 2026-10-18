@@ -98,7 +98,7 @@ test('an answered turn pays a little for the answer, and the answer is in the hi
   tracker = finish(tracker, read, 1).tracker
   tracker = finish(tracker, edit, 2).tracker
 
-  const done = completeTurn(tracker, { id: 't1', reason: 'answer', now: 3 })
+  const done = completeTurn(tracker, { id: 't1', reason: 'answer', now: 3, durationMs: 0 })
 
   expect(done.gain).toEqual({ cls: 'guerreiro', xp: 3, level: 1, leveledUp: false })
   expect(done.tracker.guild.guerreiro.xp).toBe(5)
@@ -140,7 +140,7 @@ test('an interrupted or failed turn pays nothing but is over', async () => {
   const started = startTurn(fresh(), { id: 't1', prompt: 'corrija', now: 0 })
 
   for (const reason of ['aborted', 'error', 'refusal']) {
-    const done = completeTurn(started, { id: 't1', reason, now: 5 })
+    const done = completeTurn(started, { id: 't1', reason, now: 5, durationMs: 0 })
 
     expect(done.gain).toBe(undefined)
     expect(done.tracker.guild).toEqual(emptyGuild())
@@ -152,8 +152,8 @@ test('an interrupted or failed turn pays nothing but is over', async () => {
 test('the completion of another turn is ignored', async () => {
   const started = startTurn(fresh(), { id: 't1', prompt: 'corrija', now: 0 })
 
-  expect(completeTurn(started, { id: 'other', reason: 'answer', now: 5 }).tracker).toEqual(started)
-  expect(completeTurn(fresh(), { id: 't1', reason: 'answer', now: 5 }).gain).toBe(undefined)
+  expect(completeTurn(started, { id: 'other', reason: 'answer', now: 5, durationMs: 0 }).tracker).toEqual(started)
+  expect(completeTurn(fresh(), { id: 't1', reason: 'answer', now: 5, durationMs: 0 }).gain).toBe(undefined)
 })
 
 test('a failing call raises the bug, a passing call of the same kind defeats it and pays a bonus to who did it', async () => {
@@ -290,10 +290,10 @@ test('running calls: a finished, failed or refused call leaves the list', async 
 
 test('running calls: the end of the turn clears them', async () => {
   const running = callStarted(startTurn(fresh(), { id: 't1', prompt: 'oi', now: 0 }), call(1, 'Edit', 'a.ts'))
-  const done = completeTurn(running, { id: 't1', reason: 'answer', now: 9 })
+  const done = completeTurn(running, { id: 't1', reason: 'answer', now: 9, durationMs: 0 })
   expect(done.tracker.running).toEqual([])
 
-  const interrupted = completeTurn(running, { id: 't1', reason: 'interrupted', now: 9 })
+  const interrupted = completeTurn(running, { id: 't1', reason: 'interrupted', now: 9, durationMs: 0 })
   expect(interrupted.tracker.running).toEqual([])
 })
 

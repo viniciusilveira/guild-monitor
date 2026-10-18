@@ -43,6 +43,10 @@ export type ViewModel = {
   recent: RecentOp[]
   // The latest call that has not finished, or null when nothing runs.
   doing: Doing | null
+  // Whole seconds since the session began (null while unknown) and of the current turn, or of the last one
+  // that ended (null before the first). Whole seconds, so the view only changes when a second does.
+  sessionSeconds: number | null
+  turnSeconds: number | null
 }
 
 declare module 'claude-code' {
