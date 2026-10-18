@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Engine-level evidence: runs one short non-interactive session with the installed guild-monitor
+# plugin and checks that its hooks fired and wrote the trace log (`guild.trace.v1`).
+#
+# It needs a logged-in Claude Code with the plugin installed, makes one small model call and adds
+# two lines to the real trace, so it is for a developer machine or an agent, not for CI.
+set -euo pipefail
+
+store_dir="$HOME/.claude/plugins/store"
+store="$(ls -t "$store_dir"/guild-monitor_*.json 2>/dev/null | head -n 1 || true)"
+
+if [ -z "$store" ]; then
+  echo "engine-check: no guild-monitor store in $store_dir. Install the plugin and open a session first." >&2
+  exit 1
+fi
+
+# The time of the latest tool line: the trace keeps a fixed number of lines, so a count may not grow.
+latest_tool() {
+  python3 - "$store" <<'PY'
+import json, sys
+
+data = json.load(open(sys.argv[1]))
+trace = data.get("guild.trace.v1", [])
+trace = json.loads(trace) if isinstance(trace, str) else trace
+print(max((entry.get("at", 0) for entry in trace if entry.get("what") == "tool"), default=0))
+PY
+}
+
+before="$(latest_tool)"
+workdir="$(mktemp -d)"
+trap 'rm -rf "$workdir"' EXIT
+
+(cd "$workdir" && claude -p "run the command pwd with the Bash tool and answer only with its output" --allowedTools Bash </dev/null >/dev/null)
+
+after="$(latest_tool)"
+
+if [ "$after" -le "$before" ]; then
+  echo "engine-check: the session ran but no new tool line in the trace (latest $before -> $after)." >&2
+  exit 1
+fi
+
+echo "engine-check: ok (a new tool line reached guild.trace.v1: $before -> $after)"
