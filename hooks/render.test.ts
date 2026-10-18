@@ -988,10 +988,10 @@ const startBoth = async ($: Engine, on: On, fails: Fail = () => false) => {
   await jumps($, 0, 140, both)
 }
 
-type Item = { text: string; color: unknown }
+type Item = { text: string; color: unknown; dim: unknown }
 
 const itemsOf = async (mounted: { findAll: Awaited<ReturnType<typeof mountPanel>>['findAll'] }): Promise<Item[]> =>
-  (await mounted.findAll({ type: 'Text' })).map(item => ({ text: item.text as string, color: item.props.color }))
+  (await mounted.findAll({ type: 'Text' })).map(item => ({ text: item.text as string, color: item.props.color, dim: item.props.dimColor }))
 
 const panelItems = async ($: Engine, columns = 60): Promise<Item[]> => {
   const panel = await mountPanel($, columns)
@@ -1349,6 +1349,8 @@ test('tokens C8: turns without usage add nothing and keep the lines', OPTIONS, a
   await $.turn.complete({ turnId: 't4', reason: 'aborted', isAborted: true, answer: '', durationMs: 10 } as never)
   await $.turn.start({ text: 'quatro', turnId: 't5' } as never)
   await $.turn.complete({ turnId: 't5', reason: 'error', answer: '', durationMs: 10 } as never)
+  await $.turn.start({ text: 'cinco', turnId: 't6' } as never)
+  await $.turn.complete({ turnId: 't6', reason: 'refusal', refusal: { category: 'x' }, answer: '', durationMs: 10 } as never)
   await $.turn.complete({ turnId: 's1', agentId: 'sub1', reason: 'aborted', isAborted: true, answer: '', durationMs: 10 } as never)
 
   expect((await tokenTexts($)).map(item => item.text)).toEqual(before)
@@ -1479,6 +1481,12 @@ test('tokens C15: the bands show no token line, only the model', { options: { la
     const texts = items.map(item => item.text)
     expect(texts.some(text => TOKEN_LINE.test(text) || /input|cache \d/.test(text))).toBe(false)
     expect(texts).toContain('sonnet-5-5')
+    // Dim, and right after the name, in a row with it.
+    expect(texts.indexOf('sonnet-5-5')).toBe(texts.indexOf('Guerreiro Nv.3') + 1)
+    expect(items.find(item => item.text === 'sonnet-5-5')?.dim).toBe(true)
+    const band = await mountBand($, columns, rows)
+    expect((await band.find({ key: 'name' }))?.props.flexDirection).toBe('row')
+    await band.unmount()
     // The model shares the line of the name: it is one Text more but no line more.
     expect(texts.filter(text => text !== 'sonnet-5-5').length).toBeLessThanOrEqual(rows)
   }
@@ -1488,7 +1496,8 @@ test('tokens C16: nothing about tokens reaches the store, the trace or a toast',
   const writes: string[] = []
   const toasts: string[] = []
   const store = (on: On) => {
-    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 159 } } : undefined }) as never)
+    // 157 XP: the first edit and the answer of turn one take the warrior to level 3, a toast, once the model is known.
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 157 } } : undefined }) as never)
     on('store.set', async (_$, e) => {
       writes.push(JSON.stringify([e.key, e.value]))
 
@@ -1504,13 +1513,40 @@ test('tokens C16: nothing about tokens reaches the store, the trace or a toast',
   await setup($, on, () => false, () => undefined, store)
   await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
   await call($, 'Edit', EDIT)
+  expect(toasts.length).toBe(0)
   await finish($, 't1', { input: 7_777, read: 3_242_424, output: 98_765, model: 'claude-segredo-9' })
+  // The level-up of the answer came after the model was known.
+  expect(toasts.length).toBe(1)
   await finish($, 's1', { input: 4_242, output: 31_337 }, { agentId: 'sub1' })
 
+  // A second main turn, with the model and the totals known: its start, its tool and its end are traced and stored.
+  await $.turn.start({ text: 'outro', turnId: 't2' } as never)
+  await call($, 'Edit', EDIT)
+  await finish($, 't2', { input: 7_777, read: 3_242_424, output: 98_765, model: 'claude-segredo-9' })
+
   const trace = ((await $.command.run({ command: 'guild', args: 'trace' } as never)) as { text: string }).text
-  expect(writes.length).toBeGreaterThan(0)
-  expect(toasts.length).toBeGreaterThan(0)
-  expect([...writes, ...toasts, trace].join('\n')).not.toMatch(/7777|7_777|3242424|98765|4242|31337|segredo|tokens|usage|cache|input_tokens/)
+  expect(trace).toContain('início')
+  expect(writes.length).toBeGreaterThan(3)
+  expect([...writes, ...toasts, trace].join('\n')).not.toMatch(/7777|7_777|3242424|98765|4242|31337|segredo|tokens|usage|cache|input_tokens|sonnet/)
+})
+
+test('tokens C19: the rule is the presence of usage, whatever the reason that ended the turn', OPTIONS, async ($, on) => {
+  await fast($, on)
+  const one = { input: 100, output: 10 }
+
+  // A refusal without usage adds nothing; with usage it adds, like an interrupted turn or one an API error ended.
+  await $.turn.complete({ turnId: 't1', reason: 'refusal', refusal: { category: 'x' }, answer: '', durationMs: 10 } as never)
+  expect(await tokenTexts($)).toEqual([])
+
+  const reasons = [{ reason: 'refusal', refusal: { category: 'x' } }, { reason: 'aborted', isAborted: true }, { reason: 'error' }]
+  for (const [i, more] of reasons.entries()) {
+    await $.turn.start({ text: 'x', turnId: `r${i}` } as never)
+    await $.turn.complete({ turnId: `r${i}`, answer: '', durationMs: 10, usage: usageOf(one), ...more } as never)
+    expect((await tokenTexts($)).map(item => item.text)).toEqual([
+      'tokens  input 100 · output 10 · cache 0%',
+      `sessão  input ${(i + 1) * 100} · output ${(i + 1) * 10} · cache 0%`,
+    ])
+  }
 })
 
 test('tokens C17: every demo scene shows made-up tokens', async ($, on) => {
