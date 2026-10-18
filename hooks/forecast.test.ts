@@ -200,7 +200,7 @@ test('forecast C9: a forecast at or past the reset lasts and one before it is ur
   expect(forecastOf(justBefore, at(10), 'five_hour')).toEqual({ kind: 'lasts' })
 
   // The reading is 3 minutes old: the 140 minutes have 3 gone already, and 137 do not reach a reset 138 away.
-  const aged = build(points, new Date(at(13) + 138 * MIN).toISOString())
+  const aged = build(points, new Date(at(13) + 141 * MIN).toISOString())
   expect(forecastOf(aged, at(13), 'five_hour')).toEqual({ kind: 'runs', ms: 140 * MIN, urgent: true })
 
   const early = build(points, resetIn(100))
@@ -304,4 +304,26 @@ test('forecast C25: a forecast longer than its window is not shown without a res
 
   // With a reset to compare with, a long pace is "dura até o reset", as before.
   expect(forecastOf(build([[0, 40], [30, 41], [60, 42]], resetIn(200)), at(60), 'five_hour')).toEqual({ kind: 'lasts' })
+})
+
+test('forecast C26: the red and the text agree: the shown value against the time until the reset', () => {
+  // 50, 55, 60 ten minutes apart; two minutes after the last reading 78 minutes are left, shown as 80.
+  const points = [[0, 50], [10, 55], [20, 60]] as const
+  const now = at(22)
+  const reset = (minutes: number) => new Date(now + minutes * MIN).toISOString()
+
+  // The reset in 79 minutes comes before the 80 shown: it lasts, not red (the raw 78 would have been red).
+  expect(forecastOf(build(points, reset(79)), now, 'five_hour')).toEqual({ kind: 'lasts' })
+  expect(text(forecastOf(build(points, reset(79)), now, 'five_hour'))).toBe('dura até o reset')
+  // The edges: exactly the shown 80 lasts, one millisecond more is red with the same 80.
+  expect(forecastOf(build(points, reset(80)), now, 'five_hour')).toEqual({ kind: 'lasts' })
+  const after = forecastOf(build(points, new Date(now + 80 * MIN + 1).toISOString()), now, 'five_hour')
+  expect(after).toEqual({ kind: 'runs', ms: 80 * MIN, urgent: true })
+  expect(text(after)).toBe('esgota em ~1h20')
+  expect(forecastOf(build(points, reset(78)), now, 'five_hour')).toEqual({ kind: 'lasts' })
+  expect(forecastOf(build(points, reset(81)), now, 'five_hour')).toEqual({ kind: 'runs', ms: 80 * MIN, urgent: true })
+
+  // The minutes since the last reading come off before rounding: 81 left at the reading, 79 two minutes later, 80 shown.
+  const halves = [[0, 49.5], [10, 54.5], [20, 59.5]] as const
+  expect(forecastOf(build(halves, reset(81)), now, 'five_hour')).toEqual({ kind: 'runs', ms: 80 * MIN, urgent: true })
 })

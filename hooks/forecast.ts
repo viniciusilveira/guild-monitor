@@ -153,7 +153,8 @@ export const forecastOf = (series: Series, now: number, kind: WindowKind): Forec
   // Without a reset to compare with, a forecast longer than the window itself is a pace too slow to mean anything.
   if (reset === null || reset <= now) return ms > spec.lengthMs ? none : { kind: 'runs', ms, urgent: false }
 
-  return left >= reset - now ? { kind: 'lasts' } : { kind: 'runs', ms, urgent: true }
+  // The comparison is made with the value the screen shows (rounded up), so the color and the text agree.
+  return ms >= reset - now ? { kind: 'lasts' } : { kind: 'runs', ms, urgent: true }
 }
 
 const short = (ms: number): string => {
