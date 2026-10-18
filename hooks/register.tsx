@@ -4,6 +4,7 @@ import type { CoreEngineInterface, Register, StateDollar } from 'claude-code'
 import type { ViewModel } from '../types'
 import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
+import { targetOf } from './doing'
 import { choiceOf, demoState, SCENES, sceneOf } from './demo'
 import type { Settings } from './guild'
 import { DEFAULTS, isRejection } from './guild'
@@ -16,7 +17,7 @@ import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import type { TraceEntry } from './trace'
 import { appendTrace, describeTrace, parseTrace, programOf } from './trace'
-import { completeTurn, createTracker, setPlanMode, startTurn, tick, toolFinished, toolStarted } from './tracker'
+import { callEnded, callStarted, completeTurn, createTracker, setPlanMode, startTurn, tick, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
 import { buildView, frameAt, mergeUsage, NAMES, sheetIdFor, usageFrom } from './view'
 import { emptyGuild, parseGuild } from './xp'
@@ -146,6 +147,8 @@ export const register: Register = (on, options) => {
   let bandId: string | undefined
   // False until the guild is read from the store: before that the band keeps showing the last view.
   let isReady = false
+  // Identifies each call in progress, so parallel calls end one by one.
+  let nextCallId = 0
   const mounted = new Map<string, Mounted>()
 
   const cache: PublishCache = { signature: '' }
@@ -278,12 +281,27 @@ export const register: Register = (on, options) => {
     }
 
     const startedAt = await $.clock.now()
-    tracker = toolStarted(tracker, use, startedAt)
+    // The target is for the screen only: it goes into the tracker's memory and nowhere else.
+    const callId = (nextCallId += 1)
+    tracker = callStarted(toolStarted(tracker, use, startedAt), { id: callId, tool: use.tool, target: targetOf(use.tool, input) })
     await publishView($, buildView(tracker, usage, startedAt, settings), cache)
-    const ran = await next(e)
+
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } catch (error) {
+      tracker = callEnded(tracker, callId)
+      await publishView($, buildView(tracker, usage, await $.clock.now(), settings), cache)
+      throw error
+    }
+
+    // A refused call is not in progress: it leaves the line at once.
+    tracker = callEnded(tracker, callId)
 
     // A call a hook or a permission refused did not fail on its own: it neither raises nor defeats a bug.
-    if (!('deny' in ran && ran.deny)) {
+    if ('deny' in ran && ran.deny) {
+      await publishView($, buildView(tracker, usage, await $.clock.now(), settings), cache)
+    } else {
       const finishedAt = await $.clock.now()
       const rejected = isRejection({ tool: use.tool, isError: ran.isError === true, text: ran.text })
       const done = toolFinished(tracker, {
@@ -366,6 +384,7 @@ export const register: Register = (on, options) => {
 
     const tree = sidebarTree($.ui.resolve(e), {
       view,
+      columns: e.props.bodyColumns,
       layout,
       now,
       cellsFor: (key, who, size) => {

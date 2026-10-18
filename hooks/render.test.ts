@@ -6,18 +6,44 @@ const START = 1_000_000
 const MINUTE = 60_000
 
 type Fail = (tool: string) => boolean
+
+// Calls the test keeps in progress (until released) and calls a permission or hook refuses.
+const gates = new Map<string, Promise<void>>()
+const refused = new Set<string>()
+
+const hold = (tool: string): (() => void) => {
+  let release = () => {}
+  gates.set(tool, new Promise<void>(resolve => (release = resolve)))
+
+  return () => {
+    gates.delete(tool)
+    release()
+  }
+}
+
+// Lets the plugin's handlers run up to the held call.
+const later = globalThis as unknown as { setTimeout: (run: () => void, ms: number) => unknown }
+const settle = () => new Promise<void>(resolve => later.setTimeout(resolve, 30))
 type Says = (tool: string) => string | undefined
 
 // The world beneath the guild plugin: a clock the test moves, a store holding a guild whose warrior is at level 3,
 // the session's figures and a tool runner that fails the calls the test says.
 const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = () => undefined, mountStore: (on: On) => void = on => mock.store(on, { 'guild.v1': { guerreiro: { xp: 200 } } })) => {
+  gates.clear()
+  refused.clear()
   const clock = mock.clock(on, { now: START })
   mountStore(on)
   on('session.usage', async () => ({ value: { startedAt: 0, context: { percent: 30 }, rateLimits: [], cost: { usd: 1.5 } } }) as never)
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
   on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }) as never)
-  on('tool.call', async (_$, e) => ({ result: 'ok', isError: fails(e.tool), text: says(e.tool) }) as never)
+  on('turn.complete', async () => ({ text: 'feito' }) as never)
+  on('tool.call', async (_$, e) => {
+    await gates.get(e.tool)
+    if (refused.has(e.tool)) return { deny: 'blocked' } as never
+
+    return { result: 'ok', isError: fails(e.tool), text: says(e.tool) } as never
+  })
   await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
 
   return clock
@@ -32,13 +58,13 @@ const mountBand = ($: Engine) =>
     viewport: { columns: 120, rows: 40 } as never,
   })
 
-const mountPanel = ($: Engine) =>
+const mountPanel = ($: Engine, columns = 60) =>
   $.ui.mount({
     plugin: 'guild-monitor',
     surface: 'terminal',
     component: 'Pane',
     requestId: 'guild',
-    props: { title: 'Guilda', isFocused: false, bodyColumns: 60, bodyRows: 40 } as never,
+    props: { title: 'Guilda', isFocused: false, bodyColumns: columns, bodyRows: 40 } as never,
     viewport: { columns: 200, rows: 50 } as never,
   })
 
@@ -176,4 +202,191 @@ test('an edit that failed with string to replace not found spawns a bug in the e
   expect(await panel.find({ key: 'bug' })).toBeDefined()
   await panel.unmount()
   expect(lastTool('Edit')?.isError).toBe(true)
+})
+
+const shows = async (mounted: Awaited<ReturnType<typeof mountPanel>>, text: string | RegExp) =>
+  (await mounted.find({ type: 'Text', text })) !== undefined
+
+const panelShows = async ($: Engine, text: string | RegExp, columns = 60) => {
+  const panel = await mountPanel($, columns)
+  const found = await shows(panel, text)
+  await panel.unmount()
+
+  return found
+}
+
+const EDIT = { file_path: '/Users/me/src/hooks/register.tsx', old_string: 'a', new_string: 'b' }
+
+test('screen doing: the panel shows the call when it starts and the rest when it ends', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  expect(await panelShows($, 'Guerreiro: de prontidão')).toBe(true)
+
+  const release = hold('Edit')
+  const running = call($, 'Edit', EDIT)
+  await settle()
+  expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(true)
+  expect(await panelShows($, 'Guerreiro: de prontidão')).toBe(false)
+
+  release()
+  await running
+  expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(false)
+  expect(await panelShows($, 'Guerreiro: de prontidão')).toBe(true)
+})
+
+test('screen doing: the end of the turn brings back the rest', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const release = hold('Edit')
+  const running = call($, 'Edit', EDIT)
+  await settle()
+  expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(true)
+
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito' } as never)
+  expect(await panelShows($, 'Guerreiro: de prontidão')).toBe(true)
+  expect(await panelShows($, /editando/)).toBe(false)
+
+  release()
+  await running
+})
+
+test('screen doing: parallel calls show the latest not finished', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const releaseRead = hold('Read')
+  const releaseEdit = hold('Edit')
+  const reading = call($, 'Read', { file_path: '/x/a.ts' })
+  await settle()
+  const editing = call($, 'Edit', EDIT)
+  await settle()
+  expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(true)
+
+  releaseEdit()
+  await editing
+  expect(await panelShows($, 'Guerreiro: lendo a.ts')).toBe(true)
+
+  releaseRead()
+  await reading
+  expect(await panelShows($, 'Guerreiro: de prontidão')).toBe(true)
+})
+
+test('screen doing: an error and a refusal take the line away', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on, tool => tool === 'Bash')
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const releaseBash = hold('Bash')
+  const failing = call($, 'Bash', { command: 'npm test' })
+  await settle()
+  expect(await panelShows($, 'Guerreiro: executando npm test')).toBe(true)
+  releaseBash()
+  await failing
+  expect(await panelShows($, /executando/)).toBe(false)
+
+  refused.add('Edit')
+  const releaseEdit = hold('Edit')
+  const denied = call($, 'Edit', EDIT)
+  await settle()
+  releaseEdit()
+  await denied
+  refused.delete('Edit')
+  expect(await panelShows($, /editando/)).toBe(false)
+})
+
+test('screen doing: a subagent call is calling an ally and its inner calls do not change it', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'pesquise o repo', turnId: 't1' } as never)
+
+  const release = hold('Agent')
+  const running = call($, 'Agent', { subagent_type: 'Explore', prompt: 'olhe' })
+  await settle()
+  expect(await panelShows($, /: chamando um aliado$/)).toBe(true)
+
+  await call($, 'Read', { file_path: '/x/inner.ts', agentId: 'sub1' })
+  expect(await panelShows($, /: chamando um aliado$/)).toBe(true)
+  expect(await panelShows($, /inner\.ts/)).toBe(false)
+
+  release()
+  await running
+})
+
+test('screen doing: a narrow panel shows only the verb', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const release = hold('Edit')
+  const running = call($, 'Edit', EDIT)
+  await settle()
+  expect(await panelShows($, 'editando', 20)).toBe(true)
+  expect(await panelShows($, /register\.tsx/, 20)).toBe(false)
+  expect(await panelShows($, /Guerreiro: editando/, 20)).toBe(false)
+
+  release()
+  await running
+})
+
+test('screen doing: the band shows the line when the information fits', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const release = hold('Edit')
+  const running = call($, 'Edit', EDIT)
+  await settle()
+  const band = await mountBand($)
+  expect(await shows(band as never, 'editando register.tsx')).toBe(true)
+  await band.unmount()
+
+  release()
+  await running
+  const after = await mountBand($)
+  expect(await shows(after as never, /editando/)).toBe(false)
+  await after.unmount()
+})
+
+test('screen doing: no store write ever carries the target', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: string[] = []
+  const store = (on: On) => {
+    on('store.get', async () => ({ value: undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push(JSON.stringify([e.key, e.value]))
+
+      return { value: undefined } as never
+    })
+  }
+  await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const releaseEdit = hold('Edit')
+  const releaseBash = hold('Bash')
+  const editing = call($, 'Edit', { file_path: '/home/x/privado/register.tsx', old_string: 'a', new_string: 'b' })
+  const running = call($, 'Bash', { command: 'curl https://segredo.example/token' })
+  await settle()
+  expect(await panelShows($, /curl https/)).toBe(true)
+
+  releaseEdit()
+  releaseBash()
+  await editing
+  await running
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito' } as never)
+
+  expect(writes.length).toBeGreaterThan(0)
+  expect(writes.join('\n')).not.toMatch(/register|privado|segredo|token|curl https/)
+})
+
+test('screen doing: the demo scenes show a call in progress', async ($, on) => {
+  await setup($, on)
+
+  const lines: Array<[string, string]> = [
+    ['guerreiro', 'Guerreiro: editando register.tsx'],
+    ['explorador', 'Explorador: pesquisando na web'],
+    ['mago', 'Mago: planejando'],
+    ['cansado', 'Guerreiro: cansado'],
+    ['dormindo', 'Guerreiro: dormindo'],
+  ]
+
+  for (const [scene, text] of lines) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+    expect(await panelShows($, text)).toBe(true)
+  }
 })
