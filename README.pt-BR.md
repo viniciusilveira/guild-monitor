@@ -128,6 +128,27 @@ O painel lateral tem uma linha de contadores logo acima dos timers de sessão e 
 - **Barra inferior.** Não mostra os contadores, de modo que as 8 linhas da barra compacta continuam valendo.
 - **Cenas de demonstração.** Todas mostram valores fictícios, `combo x7 · melhor x9 · bugs 3`; a cena `bug` acabou de perder o combo e mostra `melhor x9 · bugs 3`.
 
+## Tokens e taxa de acerto do cache
+
+O painel lateral mostra, logo acima das últimas operações, quanto a sessão gastou em tokens e quanto o cache de prompt ajudou:
+
+```
+tokens  input 142k · output 18k · cache 87%
+sessão  input 1,2M · output 96k · cache 91%
+subagentes input 30k · output 4,1k · cache 38%
+```
+
+- **Três linhas.** `tokens` é o último turno do agente principal que trouxe consumo, `sessão` é o acumulado da sessão e `subagentes` é o acumulado dos turnos de subagentes, numa linha só deles para não misturar com a do agente principal (ela só existe depois do primeiro turno de subagente; sem nenhum turno principal, é a única).
+- **Os números.** Os dados vêm do fim de cada turno: input não-cacheado, output, cache lido e cache escrito. O `input` mostrado é tudo o que o modelo leu (não-cacheado + cache lido + cache escrito). A **taxa de acerto do cache** é cache lido / (cache lido + input não-cacheado + cache escrito), por turno e acumulada (a taxa da soma, não a média das taxas). Quando não há como calcular (só output), a linha diz `cache --`.
+- **Abreviação.** Um formatador único abrevia com vírgula decimal: `999`, `12,4k`, `142k`, `1,2M`.
+- **Taxa baixa.** Abaixo de 50% a linha fica em vermelho; 50% ou mais usa a cor normal.
+- **Turno sem consumo.** Um turno interrompido ou terminado por erro de API não traz consumo e não soma nada; as linhas ficam como estavam (e não aparecem antes do primeiro turno com consumo).
+- **Modelo.** O modelo do último turno principal aparece apagado ao lado do nome do personagem ativo (`Guerreiro Nv.3 sonnet-5-5`, sem o prefixo `claude-` nem a data). Se não couber, mostra só a família (`sonnet`) e, se nem assim, some.
+- **Painel estreito.** Cada linha usa a maior forma que cabe: `tokens  input 142k · output 18k · cache 87%`, depois `tokens  in 142k · out 18k · 87%`, depois `tokens  142k/18k 87%`, depois só `tokens  87%`; se nem a última couber, a linha some.
+- **Barra inferior.** Não mostra as linhas de tokens (as 8 linhas da barra compacta continuam valendo); mostra só o modelo apagado ao lado do nome.
+- **Só em memória.** Nada vai ao store, ao registro do `/guild trace` nem a toast, e tudo recomeça com a sessão.
+- **Cenas de demonstração.** Todas mostram valores fictícios: `tokens  input 142k · output 18k · cache 87%`, `sessão  input 1,2M · output 96k · cache 91%` e `subagentes input 30k · output 4,1k · cache 38%` (esta em vermelho, para mostrar a taxa baixa), com o modelo `sonnet-5-5` ao lado do nome. Enquanto uma cena roda, o consumo real é ignorado.
+
 ## Painel lateral
 
 Num terminal largo, no layout de tela cheia do Claude Code (`/tui fullscreen`, 110 colunas ou mais), a guilda abre como um **painel à esquerda da conversa**:
@@ -247,7 +268,7 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 - `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
 - `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
-- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
+- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).
 
