@@ -21,13 +21,18 @@ export const NO_TOKENS: Tokens = { last: null, session: null, subagents: null, m
 // A hit rate under this many percent (as shown, rounded) is highlighted.
 export const LOW_CACHE_PERCENT = 50
 
+// Beyond this a count is not a token count: it is read as invalid (zero) and a total stops growing here, so no
+// figure ever turns into Infinity, `NaN%` or an exponent on screen.
+const LIMIT = 1e15
+
 const count = (value: unknown): number =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
+  typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= LIMIT ? Math.floor(value) : 0
 
 // "12,4k", "1,2M": one decimal below 100 of the unit, none from there, a ",0" dropped. What is not a
 // finite positive number reads as "0".
 export const abbreviate = (value: number): string => {
-  const n = count(value)
+  // Too big to be a count of tokens: shown as the biggest figure there is, never as an exponent.
+  const n = typeof value === 'number' && Number.isFinite(value) && value > LIMIT ? LIMIT : count(value)
   if (n < 1000) return String(n)
 
   const units: [number, string][] = [
@@ -67,10 +72,10 @@ const sum = (a: Totals | null, b: Totals): Totals =>
   a === null
     ? b
     : {
-        uncached: a.uncached + b.uncached,
-        output: a.output + b.output,
-        cacheRead: a.cacheRead + b.cacheRead,
-        cacheWritten: a.cacheWritten + b.cacheWritten,
+        uncached: Math.min(a.uncached + b.uncached, LIMIT),
+        output: Math.min(a.output + b.output, LIMIT),
+        cacheRead: Math.min(a.cacheRead + b.cacheRead, LIMIT),
+        cacheWritten: Math.min(a.cacheWritten + b.cacheWritten, LIMIT),
       }
 
 // A turn that reported no usage adds nothing: the very same state comes back. A subagent's turn goes to its
@@ -93,7 +98,7 @@ export const addTurn = (tokens: Tokens, usage: unknown, isSubagent: boolean): To
 
 export const lineOf = (totals: Totals): TokenLine => {
   const input = totals.uncached + totals.cacheRead + totals.cacheWritten
-  const cache = input === 0 ? null : Math.round((totals.cacheRead * 100) / input)
+  const cache = input === 0 || !Number.isFinite(input) ? null : Math.round((totals.cacheRead * 100) / input)
 
   return { input, output: totals.output, cache, low: cache !== null && cache < LOW_CACHE_PERCENT }
 }

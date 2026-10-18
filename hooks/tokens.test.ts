@@ -99,3 +99,49 @@ test('tokens text: the text picks the longest form that fits and drops out when 
   expect(tokenText('subagentes', line, 20)).toBe('subagentes 87%')
   expect(tokenText('subagentes', line, 80)).toBe('subagentes input 142k · output 18k · cache 87%')
 })
+
+test('tokens C21: a model that is empty, missing or not a string keeps the one known', async () => {
+  const known = addTurn(NO_TOKENS, { input_tokens: 1, model: 'claude-a-1' }, false)
+  expect(known.model).toBe('claude-a-1')
+
+  for (const model of ['', undefined, null, 42, {}]) {
+    const after = addTurn(known, { input_tokens: 1, model }, false)
+    expect(after.model).toBe('claude-a-1')
+    expect(after.session?.uncached).toBe(2)
+  }
+
+  const without = addTurn(known, { output_tokens: 3 }, false)
+  expect(without.model).toBe('claude-a-1')
+  // The first turn without a model leaves none.
+  expect(addTurn(NO_TOKENS, { input_tokens: 1 }, false).model).toBeNull()
+  expect(addTurn(NO_TOKENS, { input_tokens: 1, model: '' }, false).model).toBeNull()
+})
+
+test('tokens C20: huge counts never become Infinity, NaN or an exponent', async () => {
+  expect(abbreviate(Number.MAX_VALUE)).toBe('1000000000M')
+  expect(abbreviate(Number.POSITIVE_INFINITY)).toBe('0')
+
+  // A count that is not a count of tokens is invalid: zero, so the usage is empty.
+  expect(usageOf({ input_tokens: Number.MAX_VALUE, output_tokens: Number.MAX_VALUE })).toBeNull()
+  expect(usageOf({ input_tokens: Number.POSITIVE_INFINITY })).toBeNull()
+
+  // Totals stop growing at the limit instead of overflowing: no sum is ever Infinity.
+  const big = { input_tokens: 1e15, cache_read_input_tokens: 1e15, cache_creation_input_tokens: 1e15, output_tokens: 1e15, model: 'claude-a-1' }
+  let tokens = NO_TOKENS
+  for (let i = 0; i < 400; i += 1) tokens = addTurn(tokens, big, i % 2 === 0)
+
+  for (const totals of [tokens.last, tokens.session, tokens.subagents]) {
+    expect(totals).not.toBeNull()
+    if (totals === null) continue
+    for (const value of Object.values(totals)) {
+      expect(Number.isFinite(value)).toBe(true)
+      expect(value).toBeLessThanOrEqual(1e15)
+    }
+    const line = lineOf(totals)
+    expect(line.cache).not.toBeNull()
+    expect(Number.isNaN(line.cache)).toBe(false)
+    expect(tokenText('sessão', line, 80)).not.toMatch(/NaN|Infinity|e\+/)
+  }
+  // Sums that overflow before the division give no rate, never NaN.
+  expect(lineOf({ uncached: Number.MAX_VALUE, output: 0, cacheRead: Number.MAX_VALUE, cacheWritten: 0 }).cache).toBeNull()
+})
