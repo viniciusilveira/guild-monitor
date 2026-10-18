@@ -25,6 +25,10 @@ export type RecentOp = {
 // its short target. It lives on screen and in memory only, never in the store.
 export type Doing = { verb: string; target: string | null }
 
+// What the screen says about a window running out: the text, a shorter text for a narrow place, and whether it
+// comes before the reset (red). In memory and on screen only.
+export type ForecastView = { text: string; short: string; urgent: boolean }
+
 // What the band draws, with the per-frame animation left out: it changes when
 // something happens (a turn, a tool, a measurement), not at every frame.
 export type ViewModel = {
@@ -45,6 +49,8 @@ export type ViewModel = {
   recent: RecentOp[]
   // The latest call that has not finished, or null when nothing runs.
   doing: Doing | null
+  // The forecast of each subscription window; null while there is not enough data or the option is off.
+  forecast: { sevenDay: ForecastView | null; fiveHour: ForecastView | null }
   // Whole seconds since the session began (null while unknown) and of the current turn, or of the last one
   // that ended (null before the first). Whole seconds, so the view only changes when a second does.
   sessionSeconds: number | null

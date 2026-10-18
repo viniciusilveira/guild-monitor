@@ -1,8 +1,10 @@
-import type { ViewModel } from '../types'
+import type { ForecastView, ViewModel } from '../types'
 import type { TaskClass } from './classify'
 import type { Animation, Settings, Snapshot } from './guild'
 import { animationFor, bugAt, DEFAULTS } from './guild'
 import { doingOf } from './doing'
+import type { History } from './forecast'
+import { EMPTY_HISTORY, forecastLine } from './forecast'
 import type { Tracker } from './tracker'
 import { CLASSES, progressOf } from './xp'
 
@@ -61,7 +63,8 @@ const turnSecondsOf = (tracker: Tracker, now: number): number | null => {
   return tracker.lastTurnMs === null || !Number.isFinite(tracker.lastTurnMs) ? null : wholeSeconds(tracker.lastTurnMs)
 }
 
-export const buildView = (tracker: Tracker, usage: Usage, now: number, settings: Settings = DEFAULTS): ViewModel => {
+// `history` is the recent readings of the two windows, for their forecasts; empty shows none.
+export const buildView = (tracker: Tracker, usage: Usage, now: number, settings: Settings = DEFAULTS, history: History = EMPTY_HISTORY): ViewModel => {
   const snapshot: Snapshot = {
     working: tracker.turn !== null,
     active: tracker.active,
@@ -94,6 +97,7 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     counters: { combo: tracker.counters.combo, best: tracker.counters.best, bugs: tracker.counters.bugs },
     recent: [...tracker.recent],
     doing: doingOf(tracker.running),
+    forecast: { sevenDay: forecastLine(history.seven_day, now, 'seven_day'), fiveHour: forecastLine(history.five_hour, now, 'five_hour') },
     sessionSeconds: usage.startedAt === undefined ? null : wholeSeconds(now - usage.startedAt),
     turnSeconds: turnSecondsOf(tracker, now),
   }
@@ -126,6 +130,28 @@ export const COLORS: Record<TaskClass, string> = { mago: '#8E6BBF', guerreiro: '
 // Colors of the meters, after the usual game HUD conventions: health goes green,
 // yellow, red as it drops; mana is blue; stamina orange; experience purple; gold gold.
 export const METER_COLORS = { mana: '#4A90E2', stamina: '#F39C12', xp: '#9B59B6', gold: '#F1C40F', unknown: '#7F8C8D' } as const
+
+// "5h esgota em ~40min": the window and its forecast, in the shorter wording when the full one does not fit
+// `width` columns and not at all when not even that does (a line never wraps).
+export const fitForecast = (label: string, forecast: ForecastView, width: number): string | null => {
+  if (`${label} ${forecast.text}`.length <= width) return `${label} ${forecast.text}`
+
+  return `${label} ${forecast.short}`.length <= width ? `${label} ${forecast.short}` : null
+}
+
+// The band has room for one line: the window that runs out before its reset, else the 5-hour one, else the week.
+export const bandForecast = (forecast: ViewModel['forecast']): { label: '5h' | '7d'; line: ForecastView } | null => {
+  const windows = [
+    { label: '5h', line: forecast.fiveHour },
+    { label: '7d', line: forecast.sevenDay },
+  ] as const
+  const chosen = windows.find(item => item.line?.urgent === true) ?? windows.find(item => item.line !== null)
+
+  return chosen === undefined || chosen.line === null ? null : { label: chosen.label, line: chosen.line }
+}
+
+// The red of a window that runs out before it resets.
+export const URGENT_COLOR = '#E74C3C'
 
 export const healthColor = (percent: number | null): string => {
   if (percent === null) return METER_COLORS.unknown

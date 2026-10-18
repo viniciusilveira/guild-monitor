@@ -8,7 +8,7 @@ import type { Layout, Size } from './layout'
 import { CELLS, INFO_COLUMNS } from './layout'
 import type { SidebarLayout } from './sidebar'
 import { STATS_COLUMNS } from './sidebar'
-import { agoText, bar, COLORS, costText, durationText, healthColor, METER_COLORS, NAMES, percentText, restText, untilReset } from './view'
+import { agoText, bandForecast, bar, COLORS, costText, durationText, fitForecast, healthColor, METER_COLORS, NAMES, percentText, restText, untilReset, URGENT_COLOR } from './view'
 
 // The cells of one Raster, given its key, who it draws and at what size. The
 // caller keeps track of what it handed out, to animate it later.
@@ -63,6 +63,44 @@ const statLines = (ui: Elements['terminal'], view: ViewModel, active: Char, now:
   ]
 }
 
+type Forecast = NonNullable<ViewModel['forecast']['fiveHour']>
+
+const forecastColors = (forecast: Forecast) => (forecast.urgent ? { color: URGENT_COLOR } : { dimColor: true })
+
+// The panel's lines, one per window that has something to say: 5h first, the nearer one.
+const forecastLines = (ui: Elements['terminal'], view: ViewModel, width: number) => {
+  const { Text } = ui
+  const windows = [
+    { key: 'forecast-5h', label: '5h', forecast: view.forecast.fiveHour },
+    { key: 'forecast-7d', label: '7d', forecast: view.forecast.sevenDay },
+  ]
+
+  return windows.flatMap(({ key, label, forecast }) => {
+    const text = forecast === null ? null : fitForecast(label, forecast, width)
+
+    return forecast === null || text === null
+      ? []
+      : [
+          <Text key={key} {...forecastColors(forecast)}>
+            {text}
+          </Text>,
+        ]
+  })
+}
+
+// The band's one line for the windows, or nothing.
+const bandForecastLine = (ui: Elements['terminal'], view: ViewModel) => {
+  const { Text } = ui
+  const chosen = bandForecast(view.forecast)
+  const text = chosen === null ? null : fitForecast(chosen.label, chosen.line, INFO_COLUMNS)
+
+  return chosen === null || text === null ? null : (
+    <Text key="forecast" {...forecastColors(chosen.line)}>
+      {text}
+    </Text>
+  )
+}
+
 // The band above the prompt: the active character, its attributes, the other
 // two characters and, when a tool is failing, the bug.
 export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
@@ -73,6 +111,9 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
 
   const own = CELLS[layout.active]
   const mini = CELLS.mini
+  // One line for the windows. With a full character it follows the stats; with a reduced one (8 rows) it takes
+  // the legend's line, and the bug's warning comes before it.
+  const forecast = bandForecastLine(ui, view)
 
   return (
     <Box flexDirection="row" alignItems="flex-end" gap={1}>
@@ -86,10 +127,13 @@ export const bandTree = (ui: Elements['terminal'], args: BandArgs) => {
         <Box flexDirection="column" width={INFO_COLUMNS} alignSelf="flex-start">
           {doingText(ui, view, active, INFO_COLUMNS)}
           {statLines(ui, view, active, now, true)}
+          {layout.active === 'full' && forecast}
           {layout.bugBelow ? (
             <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
           ) : view.bug !== 'none' && !layout.bug ? (
             <Text color="red">bug na área!</Text>
+          ) : layout.active === 'mini' && forecast !== null ? (
+            forecast
           ) : (
             <Text dimColor>HP=7d MP=5h ST=ctx</Text>
           )}
@@ -172,12 +216,14 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
           <Box flexDirection="column" width={STATS_COLUMNS} alignSelf="flex-start">
             {statLines(ui, view, active, now)}
             {legend}
+            {forecastLines(ui, view, STATS_COLUMNS)}
             {bugUnderStats && bugBox}
           </Box>
         )}
       </Box>
       {layout.stats === 'below' && statLines(ui, view, active, now)}
       {layout.stats === 'below' && legend}
+      {layout.stats === 'below' && forecastLines(ui, view, columns)}
       {layout.bug && !bugUnderStats && bugBox}
       {layout.others !== null && (
         <Box flexDirection={layout.others === 'row' ? 'row' : 'column'} gap={1}>

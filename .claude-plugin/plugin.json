@@ -51,6 +51,16 @@
         "bar",
         "panel"
       ]
+    },
+    "showForecast": {
+      "type": "string",
+      "title": "Previsão de esgotamento",
+      "description": "on: mostra quando as janelas de 5 horas e de 7 dias se esgotam no ritmo atual; off: esconde a previsão",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
     }
   }
 }

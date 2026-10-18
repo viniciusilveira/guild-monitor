@@ -67,6 +67,16 @@ Quem está em cena é a classe da maioria das **três últimas chamadas de ferra
 
 HP e MP vêm dos limites da sua assinatura: fora de uma assinatura (por exemplo, com chave de API) mostram `--`. Um valor que a sessão ainda não informou mantém o último conhecido, então os medidores nunca se apagam ao trocar de personagem.
 
+## Previsão das janelas
+
+Ao lado de HP e MP a guilda diz quando cada janela se esgota **no ritmo atual**: `5h esgota em ~40min`, `7d esgota em ~3 dias`, `5h dura até o reset` (dura até a janela reiniciar) ou `7d sem consumo` (nada está sendo gasto). Fica vermelha quando a janela se esgota antes de reiniciar.
+
+- A estimativa vem das leituras dos limites que o plugin já faz, com a inclinação média das mais recentes (a última hora na janela de 5 horas, os últimos dois dias na semana). A porcentagem anda em pontos inteiros, então só diz algo com pelo menos 3 leituras, ao longo de 10 minutos (2 horas na semana) e uma variação de 2 pontos. Antes disso nada aparece: **a previsão nunca inventa um número**. O tempo sobe em passos de 5 minutos; a semana mostra dias.
+- Quando uma janela reinicia (novo horário de reset, ou a porcentagem cai) as leituras recomeçam, e a previsão volta quando houver leituras novas suficientes. Uma janela que a sessão deixa de informar deixa de ser prevista.
+- No painel lateral cada janela tem a sua linha, abaixo da legenda. Na barra inferior cabe uma: a janela que se esgota antes de reiniciar, senão a de 5 horas. Na barra compacta (8 linhas) ela ocupa a linha da legenda e cede ao aviso `bug na área!`. Num painel estreito o texto perde o `em` (`5h esgota ~40min`) e, se nem assim couber, a linha some.
+- Só as leituras recentes existem, na memória: nada vai para o store, para o registro de `/guild trace` nem para um toast. A opção `showForecast` em `off` esconde tudo.
+- As cenas demo mostram uma previsão fictícia: `5h esgota em ~1h30` em vermelho e `7d dura até o reset`.
+
 ## XP e níveis
 
 Cada chamada de ferramenta que termina **sem erro** paga XP na hora à classe a que pertence, então uma tarefa que explora, planeja e depois executa alimenta os três personagens:
@@ -190,6 +200,7 @@ Reinicie o Claude Code e a guilda aparece acima do prompt.
 | `bandSize` | `full` | `full`: personagem ativo em tamanho cheio (16 linhas); `compact`: todos reduzidos (8 linhas) |
 | `layout` | `auto` | `auto`: painel lateral onde couber, barra inferior no resto; `bar`: só a barra; `panel`: só o painel |
 | `demo` | `off` | uma cena fixa com valores fictícios: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo` |
+| `showForecast` | `on` | `on`: mostra quando as janelas de 5 horas e de 7 dias se esgotam no ritmo atual; `off`: esconde a previsão |
 
 Defina-as na instalação (`claude plugin install … --config bandSize=compact`), com `claude plugin configure guild-monitor` ou em `/plugin`.
 
@@ -197,7 +208,7 @@ A banda se adapta ao terminal: primeiro o personagem ativo, depois os status ao 
 
 ### Modo demo
 
-O `demo` mostra números inventados (HP 72%, MP 45% com 2h13 para reiniciar, ST 64%, $3,42, um Guerreiro nível 4) numa cena fixa e **ignora a sessão real e não salva nada**. Útil para prints e para um primeiro contato. Deixe em `off` no uso real.
+O `demo` mostra números inventados (HP 72%, MP 45% com 2h13 para reiniciar, ST 64%, $3,42, um Guerreiro nível 4, e uma previsão: a janela de 5 horas se esgotando em `~1h30`) numa cena fixa e **ignora a sessão real e não salva nada**. Útil para prints e para um primeiro contato. Deixe em `off` no uso real.
 
 Não precisa reiniciar para trocar de cena: digite `/guild bug` (ou qualquer outra cena) e a banda muda na hora; `/guild off` volta à sessão real. O comando vale só para a sessão atual.
 
@@ -236,7 +247,7 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 - `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
 - `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
-- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
+- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `demo.ts`. Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).
 
