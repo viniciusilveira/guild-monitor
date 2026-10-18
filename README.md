@@ -84,7 +84,7 @@ Level `n` starts at `40 × (n − 1)²` XP: level 2 at 40, level 3 at 160, level
 
 ## The bug
 
-When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). If no such call comes, the bug leaves on its own after **2 minutes without a new tool error**; a new error restarts that count. Calls refused by a permission or a hook, and the ones **you reject yourself** (a declined plan, a denied permission, an interrupted question), are not failures: they raise no bug, defeat no live bug and pay no XP. In `/guild trace` they show as `RECUSADA`, not `ERRO`.
+When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). If no such call comes, the bug leaves on its own after **2 minutes without a new tool error**; a new error restarts that count. Calls refused by a permission or a hook, and the ones **you reject yourself** (a declined plan, a denied permission, an interrupted question), are not failures: they raise no bug, defeat no live bug and pay no XP. In `/guild trace` they show as `RECUSADA`, not `ERRO`. Spotting a rejection is best effort: a rejected plan or question is always recognized, but for the other tools it relies on the refusal text of the engine, which can change between versions, and a shell command you interrupt while it runs still raises a bug.
 
 ## Side panel
 
