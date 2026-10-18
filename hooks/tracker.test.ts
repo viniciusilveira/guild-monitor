@@ -296,3 +296,10 @@ test('running calls: the end of the turn clears them', async () => {
   const interrupted = completeTurn(running, { id: 't1', reason: 'interrupted', now: 9 })
   expect(interrupted.tracker.running).toEqual([])
 })
+
+test('running calls: starting a new turn clears the calls of the old one', async () => {
+  const running = callStarted(startTurn(fresh(), { id: 't1', prompt: 'oi', now: 0 }), call(1, 'Edit', 'a.ts'))
+  expect(running.running.length).toBe(1)
+
+  expect(startTurn(running, { id: 't2', prompt: 'outro', now: 5 }).running).toEqual([])
+})

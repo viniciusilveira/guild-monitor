@@ -10,6 +10,7 @@ type Fail = (tool: string) => boolean
 // Calls the test keeps in progress (until released) and calls a permission or hook refuses.
 const gates = new Map<string, Promise<void>>()
 const refused = new Set<string>()
+const thrown = new Set<string>()
 
 const hold = (tool: string): (() => void) => {
   let release = () => {}
@@ -23,7 +24,22 @@ const hold = (tool: string): (() => void) => {
 
 // Lets the plugin's handlers run up to the held call.
 const later = globalThis as unknown as { setTimeout: (run: () => void, ms: number) => unknown }
-const settle = () => new Promise<void>(resolve => later.setTimeout(resolve, 30))
+const sleep = (ms: number) => new Promise<void>(resolve => later.setTimeout(resolve, ms))
+
+// The calls that reached the tool beneath the plugin (and, inside a subagent, those with an agentId): the
+// plugin's handler has then already put them in its memory. The test waits for them instead of a fixed time.
+const entered = new Set<string>()
+
+const until = async (check: () => boolean | Promise<boolean>, what: string): Promise<void> => {
+  for (let waited = 0; waited < 2_000; waited += 5) {
+    if (await check()) return
+    await sleep(5)
+  }
+
+  throw new Error(`timed out waiting for ${what}`)
+}
+
+const arrived = (tool: string) => until(() => entered.has(tool), `the ${tool} call`)
 type Says = (tool: string) => string | undefined
 
 // The world beneath the guild plugin: a clock the test moves, a store holding a guild whose warrior is at level 3,
@@ -31,6 +47,8 @@ type Says = (tool: string) => string | undefined
 const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = () => undefined, mountStore: (on: On) => void = on => mock.store(on, { 'guild.v1': { guerreiro: { xp: 200 } } })) => {
   gates.clear()
   refused.clear()
+  thrown.clear()
+  entered.clear()
   const clock = mock.clock(on, { now: START })
   mountStore(on)
   on('session.usage', async () => ({ value: { startedAt: 0, context: { percent: 30 }, rateLimits: [], cost: { usd: 1.5 } } }) as never)
@@ -39,7 +57,9 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }) as never)
   on('turn.complete', async () => ({ text: 'feito' }) as never)
   on('tool.call', async (_$, e) => {
+    entered.add(e.tool)
     await gates.get(e.tool)
+    if (thrown.has(e.tool)) throw new Error('boom')
     if (refused.has(e.tool)) return { deny: 'blocked' } as never
 
     return { result: 'ok', isError: fails(e.tool), text: says(e.tool) } as never
@@ -224,7 +244,7 @@ test('screen doing: the panel shows the call when it starts and the rest when it
 
   const release = hold('Edit')
   const running = call($, 'Edit', EDIT)
-  await settle()
+  await arrived('Edit')
   expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(true)
   expect(await panelShows($, 'Guerreiro: de prontidão')).toBe(false)
 
@@ -240,7 +260,7 @@ test('screen doing: the end of the turn brings back the rest', { options: { layo
 
   const release = hold('Edit')
   const running = call($, 'Edit', EDIT)
-  await settle()
+  await arrived('Edit')
   expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(true)
 
   await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito' } as never)
@@ -258,9 +278,9 @@ test('screen doing: parallel calls show the latest not finished', { options: { l
   const releaseRead = hold('Read')
   const releaseEdit = hold('Edit')
   const reading = call($, 'Read', { file_path: '/x/a.ts' })
-  await settle()
+  await arrived('Read')
   const editing = call($, 'Edit', EDIT)
-  await settle()
+  await arrived('Edit')
   expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(true)
 
   releaseEdit()
@@ -278,7 +298,7 @@ test('screen doing: an error and a refusal take the line away', { options: { lay
 
   const releaseBash = hold('Bash')
   const failing = call($, 'Bash', { command: 'npm test' })
-  await settle()
+  await arrived('Bash')
   expect(await panelShows($, 'Guerreiro: executando npm test')).toBe(true)
   releaseBash()
   await failing
@@ -287,7 +307,7 @@ test('screen doing: an error and a refusal take the line away', { options: { lay
   refused.add('Edit')
   const releaseEdit = hold('Edit')
   const denied = call($, 'Edit', EDIT)
-  await settle()
+  await arrived('Edit')
   releaseEdit()
   await denied
   refused.delete('Edit')
@@ -297,18 +317,43 @@ test('screen doing: an error and a refusal take the line away', { options: { lay
 test('screen doing: a subagent call is calling an ally and its inner calls do not change it', { options: { layout: 'bar' } }, async ($, on) => {
   await setup($, on)
   await $.turn.start({ text: 'pesquise o repo', turnId: 't1' } as never)
+  expect(await panelShows($, /: chamando um aliado$/)).toBe(false)
 
-  const release = hold('Agent')
+  const releaseAgent = hold('Agent')
   const running = call($, 'Agent', { subagent_type: 'Explore', prompt: 'olhe' })
-  await settle()
+  await arrived('Agent')
   expect(await panelShows($, /: chamando um aliado$/)).toBe(true)
 
-  await call($, 'Read', { file_path: '/x/inner.ts', agentId: 'sub1' })
+  // The subagent's own call stays in progress while the screen is looked at: it must not take the line.
+  const releaseInner = hold('Read')
+  const inner = call($, 'Read', { file_path: '/x/inner.ts', agentId: 'sub1' })
+  await arrived('Read')
   expect(await panelShows($, /: chamando um aliado$/)).toBe(true)
-  expect(await panelShows($, /inner\.ts/)).toBe(false)
+  expect(await panelShows($, /inner\.ts|lendo/)).toBe(false)
+
+  releaseInner()
+  await inner
+  expect(await panelShows($, /: chamando um aliado$/)).toBe(true)
+
+  releaseAgent()
+  await running
+  expect(await panelShows($, /chamando um aliado/)).toBe(false)
+})
+
+test('screen doing: a call that throws does not stay on the line until the turn ends', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  thrown.add('Edit')
+  const release = hold('Edit')
+  const running = call($, 'Edit', EDIT).catch(() => 'threw')
+  await arrived('Edit')
+  expect(await panelShows($, 'Guerreiro: editando register.tsx')).toBe(true)
 
   release()
   await running
+  expect(await panelShows($, /editando/)).toBe(false)
+  expect(await panelShows($, 'Guerreiro: de prontidão')).toBe(true)
 })
 
 test('screen doing: a narrow panel shows only the verb', { options: { layout: 'bar' } }, async ($, on) => {
@@ -317,7 +362,7 @@ test('screen doing: a narrow panel shows only the verb', { options: { layout: 'b
 
   const release = hold('Edit')
   const running = call($, 'Edit', EDIT)
-  await settle()
+  await arrived('Edit')
   expect(await panelShows($, 'editando', 20)).toBe(true)
   expect(await panelShows($, /register\.tsx/, 20)).toBe(false)
   expect(await panelShows($, /Guerreiro: editando/, 20)).toBe(false)
@@ -332,7 +377,7 @@ test('screen doing: the band shows the line when the information fits', { option
 
   const release = hold('Edit')
   const running = call($, 'Edit', EDIT)
-  await settle()
+  await arrived('Edit')
   const band = await mountBand($)
   expect(await shows(band as never, 'editando register.tsx')).toBe(true)
   await band.unmount()
@@ -346,10 +391,17 @@ test('screen doing: the band shows the line when the information fits', { option
 
 test('screen doing: no store write ever carries the target', { options: { layout: 'bar' } }, async ($, on) => {
   const writes: string[] = []
+  const toasts: string[] = []
   const store = (on: On) => {
-    on('store.get', async () => ({ value: undefined }) as never)
+    // A guild one point short of level 4 so the first payment raises a toast, which must not carry a target either.
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 159 } } : undefined }) as never)
     on('store.set', async (_$, e) => {
       writes.push(JSON.stringify([e.key, e.value]))
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(JSON.stringify(e))
 
       return { value: undefined } as never
     })
@@ -357,21 +409,50 @@ test('screen doing: no store write ever carries the target', { options: { layout
   await setup($, on, () => false, () => undefined, store)
   await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
 
-  const releaseEdit = hold('Edit')
-  const releaseBash = hold('Bash')
-  const editing = call($, 'Edit', { file_path: '/home/x/privado/register.tsx', old_string: 'a', new_string: 'b' })
-  const running = call($, 'Bash', { command: 'curl https://segredo.example/token' })
-  await settle()
+  // Long and short targets, a notebook path and a shell command, all in progress at the same time.
+  const release = ['Edit', 'Write', 'NotebookEdit', 'Bash'].map(hold)
+  const running = [
+    call($, 'Edit', { file_path: '/home/x/privado/register.tsx', old_string: 'a', new_string: 'b' }),
+    call($, 'Write', { file_path: 'a.ts', content: 'c' }),
+    call($, 'NotebookEdit', { notebook_path: '/home/x/privado/lab.ipynb' }),
+    call($, 'Bash', { command: 'curl https://segredo.example/token' }),
+  ]
+  for (const tool of ['Edit', 'Write', 'NotebookEdit', 'Bash']) await arrived(tool)
   expect(await panelShows($, /curl https/)).toBe(true)
 
-  releaseEdit()
-  releaseBash()
-  await editing
-  await running
+  for (const done of release) done()
+  await Promise.all(running)
   await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito' } as never)
 
+  const everything = [...writes, ...toasts].join('\n')
   expect(writes.length).toBeGreaterThan(0)
-  expect(writes.join('\n')).not.toMatch(/register|privado|segredo|token|curl https/)
+  expect(toasts.length).toBeGreaterThan(0)
+  expect(new Set(writes.map(write => (JSON.parse(write) as [string])[0]))).toEqual(new Set(['guild.trace.v1', 'guild.v1']))
+  expect(everything).not.toMatch(/register|privado|segredo|token|curl https|lab\.ipynb|a\.ts/)
+})
+
+test('screen doing: the line is the first text of the panel and of the band stats', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const release = hold('Edit')
+  const running = call($, 'Edit', EDIT)
+  await arrived('Edit')
+
+  const panel = await mountPanel($)
+  const panelTexts = (await panel.findAll({ type: 'Text' })).map(item => item.text)
+  expect(panelTexts[0]).toBe('Guerreiro: editando register.tsx')
+  expect(panelTexts[1]).toBe('Guerreiro Nv.3')
+  await panel.unmount()
+
+  const band = await mountBand($)
+  const bandTexts = (await band.findAll({ type: 'Text' })).map(item => item.text)
+  expect(bandTexts[0]).toBe('editando register.tsx')
+  expect(bandTexts[1]).toBe('Guerreiro Nv.3')
+  await band.unmount()
+
+  release()
+  await running
 })
 
 test('screen doing: the demo scenes show a call in progress', async ($, on) => {
@@ -379,6 +460,7 @@ test('screen doing: the demo scenes show a call in progress', async ($, on) => {
 
   const lines: Array<[string, string]> = [
     ['guerreiro', 'Guerreiro: editando register.tsx'],
+    ['bug', 'Guerreiro: editando register.tsx'],
     ['explorador', 'Explorador: pesquisando na web'],
     ['mago', 'Mago: planejando'],
     ['cansado', 'Guerreiro: cansado'],

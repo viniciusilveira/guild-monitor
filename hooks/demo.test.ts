@@ -77,6 +77,8 @@ test('the demo shows a history of payments, newest last, in every scene', async 
 
 test('demo doing: the class scenes have a call in progress and the rest scenes none', async () => {
   expect(viewOf('guerreiro').doing).toEqual({ verb: 'editando', target: 'register.tsx' })
+  // In the bug scene the edit is still running while the failed command has already ended.
+  expect(viewOf('bug').doing).toEqual({ verb: 'editando', target: 'register.tsx' })
   expect(viewOf('explorador').doing).toEqual({ verb: 'pesquisando na web', target: null })
   expect(viewOf('mago').doing).toEqual({ verb: 'planejando', target: null })
   expect(viewOf('cansado').doing).toBe(null)

@@ -70,3 +70,9 @@ test('doing line: fits whole, then without the name, then only the verb', async 
   expect(doingLine({ name: 'Guerreiro', doing: null, rest: 'de prontidão', columns: 40 })).toBe('Guerreiro: de prontidão')
   expect(doingLine({ name: 'Guerreiro', doing: null, rest: 'de prontidão', columns: 10 })).toBe('de prontidão')
 })
+
+test('doing target: a command of more than three words ends with an ellipsis even when it is short', async () => {
+  expect(targetOf('Bash', { command: 'ls -la a b' })).toBe('ls -la a…')
+  expect(targetOf('Bash', { command: 'ls -la a' })).toBe('ls -la a')
+  expect(targetOf('Bash', { command: 'git status' })).toBe('git status')
+})
