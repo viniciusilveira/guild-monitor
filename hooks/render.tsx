@@ -127,6 +127,12 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
 
   // Beside a full character the bug fits right under the stats: seven lines and eight rows are its 16.
   const bugUnderStats = layout.bug && layout.stats === 'beside' && layout.active === 'full'
+  // What each meter stands for: it is eight lines with the stats, so the bug under them still fits in 16 rows.
+  const legend = (
+    <Text key="legend" dimColor>
+      HP=7d MP=5h ST=ctx
+    </Text>
+  )
   const bugBox = (
     <Box key="bug-box" flexDirection="column">
       <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
@@ -148,11 +154,13 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
         {layout.stats === 'beside' && (
           <Box flexDirection="column" width={STATS_COLUMNS} alignSelf="flex-start">
             {statLines(ui, view, active, now)}
+            {legend}
             {bugUnderStats && bugBox}
           </Box>
         )}
       </Box>
       {layout.stats === 'below' && statLines(ui, view, active, now)}
+      {layout.stats === 'below' && legend}
       {layout.bug && !bugUnderStats && bugBox}
       {layout.others !== null && (
         <Box flexDirection={layout.others === 'row' ? 'row' : 'column'} gap={1}>
