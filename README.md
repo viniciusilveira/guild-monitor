@@ -133,9 +133,9 @@ The side panel has a line of counters above the gold split and the session and t
 The side panel splits the session's cost between the three characters, between the counters and the session timer:
 
 ```
-Mago ~$1,20 (35%)
-Guerreiro ~$1,71 (50%)
-Explorador ~$0,51 (15%)
+Mago ~$1.20 (35%)
+Guerreiro ~$1.71 (50%)
+Explorador ~$0.51 (15%)
 ```
 
 It is an **estimate**, not accounting: that is what the `~` stands for. The cost arrives in separate readings (every 2 seconds and whenever the engine reports a measurement) and the plugin does not know which call caused which part of it.
@@ -145,10 +145,10 @@ It is an **estimate**, not accounting: that is what the `~` stands for. The cost
 - **Odd readings.** A cost that did not change attributes nothing. A cost that drops (a `/clear` starts the session's cost over) clears the split and starts again from the new value. A reading that is missing, `NaN`, negative or over a billion dollars is ignored altogether.
 - **Operations.** Every tool call of the main agent that finishes inside a turn counts, whether it worked or failed. Calls you or a hook refused do not. Calls made by subagents are ignored (the same guard as the XP and the combo, `agentId`): what a subagent costs is part of the session's cost and goes to the main agent's class that ran in the interval.
 - **No lines before a change.** Until the cost has changed once, the lines are not shown.
-- **Narrow panel.** The three lines always use the same form, the longest that fits: `Mago ~$1,20 (35%)`, then `Mago ~$1,20 35%`, then `Mag ~$1,20 35%`, then just `~$1,20 35%`; if not even that fits, the lines are left out.
+- **Narrow panel.** The three lines always use the same form, the longest that fits: `Mago ~$1.20 (35%)`, then `Mago ~$1.20 35%`, then `Mag ~$1.20 35%`, then just `~$1.20 35%`; if not even that fits, the lines are left out.
 - **Session only.** Nothing is saved to the store, the `/guild trace` log or a toast, and everything starts over with the session. A history by class is a separate feature.
 - **Bottom band.** It does not show the split, so the compact band's 8 lines still hold.
-- **Demo scenes.** All of them show a made-up split that adds up to the demo's $3.42: `Mago ~$1,20 (35%)`, `Guerreiro ~$1,71 (50%)` and `Explorador ~$0,51 (15%)`.
+- **Demo scenes.** All of them show a made-up split that adds up to the demo's $3.42: `Mago ~$1.20 (35%)`, `Guerreiro ~$1.71 (50%)` and `Explorador ~$0.51 (15%)`.
 
 ## Tokens and cache hit rate
 

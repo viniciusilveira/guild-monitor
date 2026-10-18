@@ -133,9 +133,9 @@ O painel lateral tem uma linha de contadores logo acima da divisão do ouro e do
 O painel lateral divide o custo da sessão entre os três personagens, entre os contadores e o timer de sessão:
 
 ```
-Mago ~$1,20 (35%)
-Guerreiro ~$1,71 (50%)
-Explorador ~$0,51 (15%)
+Mago ~$1.20 (35%)
+Guerreiro ~$1.71 (50%)
+Explorador ~$0.51 (15%)
 ```
 
 É uma **estimativa**, não contabilidade: é isso que o `~` quer dizer. O custo chega em leituras separadas (a cada 2 segundos e sempre que o engine informa uma medição) e o plugin não sabe qual chamada causou qual parte dele.
@@ -145,10 +145,10 @@ Explorador ~$0,51 (15%)
 - **Leituras estranhas.** Um custo que não mudou não atribui nada. Um custo que cai (um `/clear` reinicia o custo da sessão) zera a divisão e recomeça do novo valor. Uma leitura ausente, `NaN`, negativa ou acima de um bilhão de dólares é ignorada por inteiro.
 - **Operações.** Toda chamada de ferramenta do agente principal que termina dentro de um turno conta, tenha dado certo ou falhado. Chamadas que você ou um hook recusaram não contam. Chamadas de subagentes são ignoradas (o mesmo guard do XP e do combo, `agentId`): o que um subagente custa faz parte do custo da sessão e vai para a classe do agente principal que rodou no intervalo.
 - **Sem linhas antes de uma variação.** Enquanto o custo não mudou uma vez, as linhas não aparecem.
-- **Painel estreito.** As três linhas usam sempre a mesma forma, a maior que cabe: `Mago ~$1,20 (35%)`, depois `Mago ~$1,20 35%`, depois `Mag ~$1,20 35%`, depois só `~$1,20 35%`; se nem essa couber, as linhas somem.
+- **Painel estreito.** As três linhas usam sempre a mesma forma, a maior que cabe: `Mago ~$1.20 (35%)`, depois `Mago ~$1.20 35%`, depois `Mag ~$1.20 35%`, depois só `~$1.20 35%`; se nem essa couber, as linhas somem.
 - **Só da sessão.** Nada vai ao store, ao registro do `/guild trace` nem a toast, e tudo recomeça com a sessão. Um histórico por classe é outra funcionalidade.
 - **Barra inferior.** Não mostra a divisão, de modo que as 8 linhas da barra compacta continuam valendo.
-- **Cenas de demonstração.** Todas mostram uma divisão fictícia que soma os $3,42 do demo: `Mago ~$1,20 (35%)`, `Guerreiro ~$1,71 (50%)` e `Explorador ~$0,51 (15%)`.
+- **Cenas de demonstração.** Todas mostram uma divisão fictícia que soma os $3.42 do demo: `Mago ~$1.20 (35%)`, `Guerreiro ~$1.71 (50%)` e `Explorador ~$0.51 (15%)`.
 
 ## Tokens e taxa de acerto do cache
 

@@ -217,24 +217,24 @@ test('gold C16: lines are written in the longest form that fits every class', as
   ]
   expect(goldLines(gold)).not.toBe(null)
 
-  expect(goldTexts(lines, 60)).toEqual(['Mago ~$1,20 (35%)', 'Guerreiro ~$1,71 (50%)', 'Explorador ~$0,51 (15%)'])
-  expect(goldTexts(lines, 22)).toEqual(['Mago ~$1,20 35%', 'Guerreiro ~$1,71 50%', 'Explorador ~$0,51 15%'])
-  expect(goldTexts(lines, 20)).toEqual(['Mag ~$1,20 35%', 'Gue ~$1,71 50%', 'Exp ~$0,51 15%'])
-  expect(goldTexts(lines, 10)).toEqual(['~$1,20 35%', '~$1,71 50%', '~$0,51 15%'])
+  expect(goldTexts(lines, 60)).toEqual(['Mago ~$1.20 (35%)', 'Guerreiro ~$1.71 (50%)', 'Explorador ~$0.51 (15%)'])
+  expect(goldTexts(lines, 22)).toEqual(['Mago ~$1.20 35%', 'Guerreiro ~$1.71 50%', 'Explorador ~$0.51 15%'])
+  expect(goldTexts(lines, 20)).toEqual(['Mag ~$1.20 35%', 'Gue ~$1.71 50%', 'Exp ~$0.51 15%'])
+  expect(goldTexts(lines, 10)).toEqual(['~$1.20 35%', '~$1.71 50%', '~$0.51 15%'])
   expect(goldTexts(lines, 9)).toBe(null)
 
   // A figure too big for the width takes the lines away whole, never a part of them.
   const big = lines.map(line => ({ ...line, micros: 123_456_789_000_000 }))
   expect(goldTexts(big, 17)).toBe(null)
-  expect(goldTexts(big, 20)).toEqual(['~$123456789,00 35%', '~$123456789,00 50%', '~$123456789,00 15%'])
-  expect(goldTexts(big, 60)?.[0]).toBe('Mago ~$123456789,00 (35%)')
+  expect(goldTexts(big, 20)).toEqual(['~$123456789.00 35%', '~$123456789.00 50%', '~$123456789.00 15%'])
+  expect(goldTexts(big, 60)?.[0]).toBe('Mago ~$123456789.00 (35%)')
   for (const width of [10, 14, 16, 18, 20, 24, 40, 60]) {
     for (const text of goldTexts(big, width) ?? []) expect(text.length).toBeLessThanOrEqual(width)
   }
 
-  expect(moneyText(1_200_000)).toBe('1,20')
-  expect(moneyText(5_000)).toBe('0,01')
-  expect(moneyText(4_999)).toBe('0,00')
-  expect(moneyText(999_999)).toBe('1,00')
-  expect(moneyText(0)).toBe('0,00')
+  expect(moneyText(1_200_000)).toBe('1.20')
+  expect(moneyText(5_000)).toBe('0.01')
+  expect(moneyText(4_999)).toBe('0.00')
+  expect(moneyText(999_999)).toBe('1.00')
+  expect(moneyText(0)).toBe('0.00')
 })

@@ -105,11 +105,11 @@ export const goldLines = (gold: Gold): GoldLine[] | null => {
   return CLASSES.map(cls => ({ cls, micros: gold.spent[cls], percent: percents[cls] }))
 }
 
-// "1,20": dollars and cents, the cents rounded from the micro-dollars.
+// "1.20": dollars and cents, written like the `ouro` line's (`costText`), the cents rounded from the micro-dollars.
 export const moneyText = (micros: number): string => {
   const cents = Math.round(micros / 10_000)
 
-  return `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`
 }
 
 const NAMES: Record<TaskClass, string> = { mago: 'Mago', guerreiro: 'Guerreiro', explorador: 'Explorador' }

@@ -1601,7 +1601,7 @@ const split342 = async ($: Engine) => {
   await measureCost($, 4.92)
 }
 
-const FULL_LINES = ['Mago ~$1,20 (35%)', 'Guerreiro ~$1,71 (50%)', 'Explorador ~$0,51 (15%)']
+const FULL_LINES = ['Mago ~$1.20 (35%)', 'Guerreiro ~$1.71 (50%)', 'Explorador ~$0.51 (15%)']
 
 test('gold C18: the panel shows the split between the counters and the session time', OPTIONS, async ($, on) => {
   await fast($, on)
@@ -1622,14 +1622,14 @@ test('gold C19: the 20 column panel keeps the three lines within its width', OPT
   await fast($, on)
   await split342($)
 
-  expect(await goldTexts($, 20)).toEqual(['Mag ~$1,20 35%', 'Gue ~$1,71 50%', 'Exp ~$0,51 15%'])
+  expect(await goldTexts($, 20)).toEqual(['Mag ~$1.20 35%', 'Gue ~$1.71 50%', 'Exp ~$0.51 15%'])
 
   // Four-digit dollars: still the same form for the three lines, none past 20 columns.
   await call($, 'Edit', EDIT)
   await measureCost($, 4.92 + 12_345.67)
   const texts = await goldTexts($, 20)
   expect(texts.every(text => text.length <= 20)).toBe(true)
-  expect(texts).toEqual(['Mag ~$1,20 0%', 'Gue ~$12347,38 100%', 'Exp ~$0,51 0%'])
+  expect(texts).toEqual(['Mag ~$1.20 0%', 'Gue ~$12347.38 100%', 'Exp ~$0.51 0%'])
 })
 
 test('gold C20: no line before a change and none in the bands, the compact one keeping its eight lines', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
@@ -1664,7 +1664,7 @@ test('gold C21: a clear or a new session takes the lines away until a new change
   expect(await goldTexts($)).toEqual([])
   await call($, 'Edit', EDIT)
   await measureCost($, 0.9)
-  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$0,50 (100%)', 'Explorador ~$0,00 (0%)'])
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$0.50 (100%)', 'Explorador ~$0.00 (0%)'])
 
   // A new session: a fresh guild reading its own base.
   cost = 9
@@ -1673,7 +1673,7 @@ test('gold C21: a clear or a new session takes the lines away until a new change
   await $.turn.start({ text: 'oi', turnId: 't2' } as never)
   await call($, 'Edit', EDIT)
   await measureCost($, 10)
-  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$1,00 (100%)', 'Explorador ~$0,00 (0%)'])
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
 })
 
 test('gold C22: the 2 second reading and the session measurement both attribute to the operation class', OPTIONS, async ($, on) => {
@@ -1686,11 +1686,11 @@ test('gold C22: the 2 second reading and the session measurement both attribute 
   // The clock reads the session again every two seconds and finds the cost higher.
   cost = 2.5
   await clock.advance(2_100)
-  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$1,00 (100%)', 'Explorador ~$0,00 (0%)'])
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
 
   await call($, 'Read', { file_path: '/x/a.ts' })
   await measureCost($, 3.5)
-  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$1,00 (50%)', 'Explorador ~$1,00 (50%)'])
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (50%)', 'Explorador ~$1.00 (50%)'])
 })
 
 test('gold C14: subagent calls are not operations', OPTIONS, async ($, on) => {
@@ -1699,13 +1699,13 @@ test('gold C14: subagent calls are not operations', OPTIONS, async ($, on) => {
   for (const tool of ['Read', 'Grep', 'Read', 'WebSearch']) await call($, tool, { file_path: '/x/a.ts', agentId: 'sub1' })
   await measureCost($, 2.5)
   // Four explorer calls ran inside a subagent: none counts, the whole change is the warrior's.
-  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$1,00 (100%)', 'Explorador ~$0,00 (0%)'])
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$1.00 (100%)', 'Explorador ~$0.00 (0%)'])
 
   // Only subagent calls in the interval: the change goes to the active class (still the warrior's turn).
   await call($, 'TodoWrite', { agentId: 'sub1' })
   await call($, 'Read', { file_path: '/x/a.ts', agentId: 'sub1' })
   await measureCost($, 4.5)
-  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$3,00 (100%)', 'Explorador ~$0,00 (0%)'])
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$3.00 (100%)', 'Explorador ~$0.00 (0%)'])
 })
 
 test('gold C23: nothing about the split reaches the store, the trace or a toast', OPTIONS, async ($, on) => {
@@ -1749,7 +1749,7 @@ test('gold C25: every demo scene shows the made-up split in the panel', OPTIONS,
     await $.command.run({ command: 'guild', args: scene } as never)
 
     expect(await goldTexts($, 60)).toEqual(FULL_LINES)
-    expect(await goldTexts($, 20)).toEqual(['Mag ~$1,20 35%', 'Gue ~$1,71 50%', 'Exp ~$0,51 15%'])
+    expect(await goldTexts($, 20)).toEqual(['Mag ~$1.20 35%', 'Gue ~$1.71 50%', 'Exp ~$0.51 15%'])
   }
 })
 
@@ -1761,5 +1761,5 @@ test('gold C13b: a call a hook denied is not an operation of the interval', OPTI
   await measureCost($, 2.5)
 
   // Only the explorer's read ran: the denied edit would have taken half of the $1.00.
-  expect(await goldTexts($)).toEqual(['Mago ~$0,00 (0%)', 'Guerreiro ~$0,00 (0%)', 'Explorador ~$1,00 (100%)'])
+  expect(await goldTexts($)).toEqual(['Mago ~$0.00 (0%)', 'Guerreiro ~$0.00 (0%)', 'Explorador ~$1.00 (100%)'])
 })
