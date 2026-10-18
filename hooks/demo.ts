@@ -40,7 +40,7 @@ const demoGuild = () => {
 const working = (tracker: Tracker, now: number, tool: string): Tracker =>
   toolStarted(startTurn(tracker, { id: 'demo', prompt: '', now }), { tool }, now)
 
-export const demoState = (scene: Scene, now: number, settings: Settings = DEFAULTS): { tracker: Tracker; usage: Usage } => {
+const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: Tracker; usage: Usage } => {
   const base = createTracker(demoGuild(), now)
   const usage: Usage = {
     contextPercent: scene === 'cansado' ? 88 : 36,
@@ -67,4 +67,19 @@ export const demoState = (scene: Scene, now: number, settings: Settings = DEFAUL
   if (scene === 'cansado') return { tracker: resting, usage }
 
   return { tracker: { ...resting, lastActivityAt: now - settings.sleepAfterMs - 1_000 }, usage }
+}
+
+// The latest payments of XP the demo shows, the newest a moment ago.
+const demoHistory = (now: number): Tracker['recent'] => [
+  { cls: 'explorador', xp: 4, at: now - 9 * MINUTE_MS, tool: 'WebSearch' },
+  { cls: 'explorador', xp: 2, at: now - 7 * MINUTE_MS, tool: 'Read' },
+  { cls: 'mago', xp: 2, at: now - 5 * MINUTE_MS, tool: 'TodoWrite' },
+  { cls: 'guerreiro', xp: 6, at: now - 3 * MINUTE_MS, tool: 'Edit' },
+  { cls: 'guerreiro', xp: 3, at: now - 1 * MINUTE_MS, tool: 'resposta' },
+]
+
+export const demoState = (scene: Scene, now: number, settings: Settings = DEFAULTS): { tracker: Tracker; usage: Usage } => {
+  const state = sceneState(scene, now, settings)
+
+  return { tracker: { ...state.tracker, recent: demoHistory(now) }, usage: state.usage }
 }

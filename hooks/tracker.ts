@@ -3,7 +3,7 @@ import { classify, classOf, DEFAULT_CLASS } from './classify'
 import type { Bug } from './guild'
 import { bugAt, categoryOf, NO_BUG, onToolResult } from './guild'
 import type { Guild } from './xp'
-import { addXp, ANSWER_XP, BUG_BONUS, CLASSES, operationXp } from './xp'
+import { addXp, ANSWER_XP, BUG_BONUS, operationXp } from './xp'
 
 const MAX_TOOLS = 500
 const MAX_RECENT = 20
@@ -12,13 +12,10 @@ export type Turn = {
   id: string
   prompt: string
   tools: ToolUse[]
-  // XP each class earned in the turn, operation by operation.
-  earned: Record<TaskClass, number>
 }
 
-const NOTHING_EARNED = (): Record<TaskClass, number> => ({ mago: 0, guerreiro: 0, explorador: 0 })
-
-export type Entry = { cls: TaskClass; xp: number; at: number }
+// One payment of XP: who got it, how much, when, and for what (a tool, or the answer).
+export type Entry = { cls: TaskClass; xp: number; at: number; tool: string }
 
 // Everything the guild remembers about the session, as plain data: the events
 // of the engine go in one at a time and a new tracker comes out.
@@ -58,7 +55,7 @@ export const setPlanMode = (tracker: Tracker, planMode: boolean): Tracker =>
 export const startTurn = (tracker: Tracker, start: { id: string; prompt: string; now: number }): Tracker =>
   reclassify({
     ...tracker,
-    turn: { id: start.id, prompt: start.prompt, tools: [], earned: NOTHING_EARNED() },
+    turn: { id: start.id, prompt: start.prompt, tools: [] },
     lastActivityAt: start.now,
   })
 
@@ -92,9 +89,10 @@ export const toolFinished = (
   const cls = classOf(done.use, tracker.planMode)
   const xp = operationXp({ durationMs: done.durationMs, lines: done.use.lines ?? 0 }) + (resolved ? BUG_BONUS : 0)
   const added = addXp(tracker.guild, cls, xp)
+  const entry: Entry = { cls, xp, at: done.now, tool: done.use.tool }
 
   return {
-    tracker: { ...moved, guild: added.guild, turn: { ...turn, earned: { ...turn.earned, [cls]: turn.earned[cls] + xp } } },
+    tracker: { ...moved, guild: added.guild, recent: [...tracker.recent, entry].slice(-MAX_RECENT) },
     gain: { cls, xp, level: added.level, leveledUp: added.leveledUp },
   }
 }
@@ -115,23 +113,17 @@ export const completeTurn = (
   const turn = tracker.turn
   if (turn === null || turn.id !== end.id) return { tracker }
 
-  const answered = end.reason === 'answer'
-  const earned = { ...turn.earned }
-  if (answered) earned[tracker.active] += ANSWER_XP
-
-  const history = CLASSES.filter(cls => earned[cls] > 0).map(cls => ({ cls, xp: earned[cls], at: end.now }))
-  const idle: Tracker = {
-    ...tracker,
-    turn: null,
-    lastActivityAt: end.now,
-    recent: [...tracker.recent, ...history].slice(-MAX_RECENT),
-  }
-  if (!answered) return { tracker: idle }
+  const idle: Tracker = { ...tracker, turn: null, lastActivityAt: end.now }
+  if (end.reason !== 'answer') return { tracker: idle }
 
   const added = addXp(tracker.guild, tracker.active, ANSWER_XP)
 
   return {
-    tracker: { ...idle, guild: added.guild },
+    tracker: {
+      ...idle,
+      guild: added.guild,
+      recent: [...tracker.recent, { cls: tracker.active, xp: ANSWER_XP, at: end.now, tool: 'resposta' }].slice(-MAX_RECENT),
+    },
     gain: { cls: tracker.active, xp: ANSWER_XP, level: added.level, leveledUp: added.leveledUp },
   }
 }

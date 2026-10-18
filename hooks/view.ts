@@ -74,6 +74,7 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     stamina: percentLeft(usage.contextPercent),
     manaResetsAt: hours?.resetsAt ?? null,
     costUsd: usage.costUsd ?? null,
+    recent: [...tracker.recent],
   }
 }
 
@@ -142,6 +143,15 @@ export const untilReset = (resetsAt: string | null, now: number): string => {
   if (Number.isNaN(at) || at <= now) return ''
 
   const minutes = Math.ceil((at - now) / 60_000)
+  if (minutes < 60) return `${minutes}min`
+
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
+}
+
+// "agora", "3min" or "1h05": how long ago something happened.
+export const agoText = (at: number, now: number): string => {
+  const minutes = Math.floor(Math.max(0, now - at) / 60_000)
+  if (minutes < 1) return 'agora'
   if (minutes < 60) return `${minutes}min`
 
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`

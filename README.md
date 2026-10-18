@@ -2,7 +2,7 @@
 
 **English** · [Português](README.pt-BR.md)
 
-A [Claude Code](https://claude.com/claude-code) mod that turns your session monitor into a tiny RPG. A guild of three pixel-art characters lives above your prompt, works while the agent works, and levels up as tasks get done. Your usage limits, context window and cost show up as game meters.
+A [Claude Code](https://claude.com/claude-code) mod that turns your session monitor into a tiny RPG. A guild of three pixel-art characters lives in a side panel (or a band above your prompt), works while the agent works, and levels up as tasks get done. Your usage limits, context window and cost show up as game meters.
 
 > **Not affiliated with Anthropic.** The orange mascot is a fan-made homage to the Claude Code mascot. "Claude" and "Claude Code" are trademarks of Anthropic.
 
@@ -86,11 +86,41 @@ Level `n` starts at `40 × (n − 1)²` XP: level 2 at 40, level 3 at 160, level
 
 When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). Calls refused by a permission or a hook are not failures.
 
+## Side panel
+
+On a wide terminal in Claude Code's fullscreen layout (`/tui fullscreen`, 110 columns or more), the guild opens as a **panel to the left of the conversation**:
+
+- the active character at full size, with its stats **beside** it, and the bug right under the stats when a tool call fails;
+- the other two characters under them, and a list of the **latest XP payments** (`3min Warrior +6 Edit`);
+- the width is yours: drag the panel's edge and the layout follows (stats drop under the character when narrow, then the character shrinks);
+- the **×** in the panel's corner closes it and brings the bottom band back; `/guild panel` opens it again.
+
+It opens by itself from 144 columns (110 once you opened it yourself), unless you closed it: the choice is remembered. Where there is no room (a narrow terminal, or the classic non-fullscreen layout) the guild stays as the band above the prompt, so it is never missing.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel-explorador.png" alt="Explorer" width="280"><br>Explorer</td>
+    <td align="center"><img src="docs/screenshots/panel-mago.png" alt="Mage" width="280"><br>Mage</td>
+    <td align="center"><img src="docs/screenshots/panel-guerreiro.png" alt="Warrior" width="280"><br>Warrior</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel-bug.png" alt="Bug" width="280"><br>Bug</td>
+    <td align="center"><img src="docs/screenshots/panel-cansado.png" alt="Tired" width="280"><br>Tired</td>
+    <td align="center"><img src="docs/screenshots/panel-dormindo.png" alt="Asleep" width="280"><br>Asleep</td>
+  </tr>
+</table>
+
+| Command | Does |
+|---|---|
+| `/guild panel` | open the side panel and keep opening it |
+| `/guild bar` | close the panel and go back to the bottom band |
+| `/guild <scene>` | show a demo scene (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`); `/guild off` returns to the real session |
+
 ## Requirements
 
 - Claude Code with mod support. Developed and tested on **2.1.302**.
 - A terminal with truecolor. Tested on **iTerm2** (macOS) and **foot** (Linux), with and without **tmux** (use `set -ga terminal-features ",*:RGB"` or `Tc` if colors look flat).
-- 16 rows free above the prompt for the full-size band (the reduced one needs 8).
+- For the side panel: the fullscreen layout (`/tui fullscreen`) and 110 columns or more. For the bottom band: 16 rows free above the prompt (the reduced one needs 8).
 
 ## Install
 
@@ -125,6 +155,7 @@ Restart Claude Code and the guild appears above the prompt.
 | `sleepAfterSeconds` | `90` | idle time after which the guild falls asleep |
 | `tiredAtPercent` | `75` | context filling at which everyone gets tired |
 | `bandSize` | `full` | `full`: active character full size (16 rows); `compact`: everyone reduced (8 rows) |
+| `layout` | `auto` | `auto`: side panel where it fits, bottom band otherwise; `bar`: only the band; `panel`: only the panel |
 | `demo` | `off` | a fixed scene with made-up figures: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo` |
 
 Set them on install (`claude plugin install … --config bandSize=compact`), with `claude plugin configure guild-monitor`, or in `/plugin`.
@@ -137,7 +168,7 @@ The band adapts to the terminal: first the active character, then the stats besi
 
 You do not need to restart to change scenes: type `/guild bug` (or any other scene) and the band switches at once; `/guild off` goes back to the real session. The command changes the scene for the current session only.
 
-## Screenshots
+## Screenshots of the bottom band
 
 <table>
   <tr>
@@ -169,7 +200,6 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 ## Roadmap
 
-- `/monitor` panel with the three characters at full size, per-class XP, cost and the latest operations.
 - A short status line for when the band is hidden.
 
 ## License
