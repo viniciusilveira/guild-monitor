@@ -19,6 +19,99 @@ test('read-only commands look, anything that writes acts', async () => {
   expect(isReadOnlyCommand('grep x f | xargs rm')).toBe(false)
 })
 
+const kind = (command: string) => kindOf(bash(command))
+
+test('grep cut head pipeline counts as exploring', async () => {
+  expect(kind('grep -rn foo . | cut -c1-190 | head')).toBe('look')
+  const tools = [bash('grep -rn foo . | cut -c1-190 | head'), bash('grep -rn foo . | cut -c1-190 | head'), bash('grep -rn foo . | cut -c1-190 | head')]
+  expect(classify({ prompt: '', planMode: false, tools })).toBe('explorador')
+})
+
+test('sed print without in-place counts as exploring', async () => {
+  expect(kind("sed -n '1,20p' file")).toBe('look')
+})
+
+test('gh pr view counts as exploring', async () => {
+  expect(kind('gh pr view 2')).toBe('look')
+})
+
+test('every added program counts as read-only', async () => {
+  const programs = ['cut', 'awk', 'tr', 'nl', 'column', 'basename', 'dirname', 'realpath', 'readlink', 'uname', 'hostname', 'id', 'ps', 'lsof', 'less', 'more']
+  expect(programs).toHaveLength(16)
+  for (const program of programs) expect([program, isReadOnlyCommand(`${program} arg`)]).toEqual([program, true])
+})
+
+test('gh read subcommands count as read-only', async () => {
+  const commands = ['gh pr view 2', 'gh pr list', 'gh pr diff 2', 'gh pr checks 2', 'gh pr status', 'gh issue view 3', 'gh issue list', 'gh repo view']
+  expect(commands).toHaveLength(8)
+  for (const command of commands) expect([command, isReadOnlyCommand(command)]).toEqual([command, true])
+})
+
+test('claude plugin list and version count as read-only', async () => {
+  expect(isReadOnlyCommand('claude plugin list')).toBe(true)
+  expect(isReadOnlyCommand('claude --version')).toBe(true)
+})
+
+test('sed options without in-place count as read-only', async () => {
+  for (const command of ["sed -n '1p' f", "sed -E 's/a/b/' f", "sed -s 's/a/b/' f", "sed -ne '2p' f", "cat f | sed 's/a/b/'"]) {
+    expect([command, isReadOnlyCommand(command)]).toEqual([command, true])
+  }
+})
+
+test('sed in-place in any spelling still acts', async () => {
+  for (const command of ['sed -i s/a/b/ f', "sed -ni 's/a/b/p' f", 'sed -i.bak s/a/b/ f', 'sed --in-place s/a/b/ f']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('xargs python3 mkdir node open and tee still act', async () => {
+  for (const command of ['xargs rm', 'python3 script.py', 'mkdir x', 'node app.js', 'open file', 'ls | tee list.txt']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('redirection to a file still acts', async () => {
+  for (const command of ['echo x > file', 'echo x >> file', 'cut -c1-5 f > out.txt']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('redirection to dev null still looks', async () => {
+  for (const command of ['grep x f > /dev/null', 'cat a 2>&1']) {
+    expect([command, kind(command)]).toEqual([command, 'look'])
+  }
+})
+
+test('one changing piece makes the whole command act', async () => {
+  for (const command of ['grep x f | cut -c1-5 | xargs rm', 'git status && mkdir x']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('gh and claude without a read subcommand act', async () => {
+  const commands = ['gh pr merge 2', 'gh issue create', 'gh repo delete x', 'gh pr', 'gh', 'claude plugin install x', 'claude', 'claude plugin']
+  expect(commands).toHaveLength(8)
+  for (const command of commands) expect([command, kind(command)]).toEqual([command, 'act'])
+})
+
+test('awk that runs commands or reads a script file acts', async () => {
+  for (const command of ['awk \'BEGIN { system("rm x") }\'', 'awk \'{ "date" | getline d }\' f', 'awk -f prog.awk f', "awk -i inplace '{print}' f"]) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('separators inside quotes do not split a command', async () => {
+  for (const command of ["sed -n '1p;3p' f", "awk '{print $1; print $2}' f", "grep -E 'a|b' f"]) {
+    expect([command, kind(command)]).toEqual([command, 'look'])
+  }
+})
+
+test('separators outside quotes still split a command', async () => {
+  for (const command of ["grep 'a|b' f | xargs rm", 'echo "a;b" ; mkdir x']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
 test('each tool counts as acting, looking or planning', async () => {
   expect(kindOf({ tool: 'Edit' })).toBe('act')
   expect(kindOf({ tool: 'Write' })).toBe('act')
