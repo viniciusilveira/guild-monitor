@@ -87,7 +87,7 @@ const specFor = (who: TaskClass | 'bug', view: ViewModel, tracker: Tracker, now:
   return { sheetId, frame: sheet === undefined ? 0 : frameAt(sheet.durations, now, sheet.loop) }
 }
 
-type PublishCache = { signature: string }
+export type PublishCache = { signature: string }
 
 // The band redraws when the view it reads changes, so a view is published as soon as an event
 // changes what it is made of, not at the next tick; one equal to the last published is not written.
@@ -97,6 +97,16 @@ const publishView = async ($: StateDollar, view: ViewModel, cache: PublishCache)
 
   cache.signature = signature
   await update($, viewAtom, () => view)
+}
+
+// The monitor only watches: a view that cannot be published must never change what a tool call does or
+// returns. The next publish starts again from a clean cache.
+export const publishQuietly = async ($: StateDollar, make: () => ViewModel | Promise<ViewModel>, cache: PublishCache): Promise<void> => {
+  try {
+    await publishView($, await make(), cache)
+  } catch {
+    cache.signature = ''
+  }
 }
 
 // A gain is saved with the guild and a new level is announced.
@@ -284,49 +294,54 @@ export const register: Register = (on, options) => {
     // The target is for the screen only: it goes into the tracker's memory and nowhere else.
     const callId = (nextCallId += 1)
     tracker = callStarted(toolStarted(tracker, use, startedAt), { id: callId, tool: use.tool, target: targetOf(use.tool, input) })
-    await publishView($, buildView(tracker, usage, startedAt, settings), cache)
+    await publishQuietly($, () => buildView(tracker, usage, startedAt, settings), cache)
 
     let ran: Awaited<ReturnType<typeof next>>
     try {
       ran = await next(e)
     } catch (error) {
       tracker = callEnded(tracker, callId)
-      await publishView($, buildView(tracker, usage, await $.clock.now(), settings), cache)
+      await publishQuietly($, async () => buildView(tracker, usage, await $.clock.now(), settings), cache)
       throw error
     }
 
     // A refused call is not in progress: it leaves the line at once.
     tracker = callEnded(tracker, callId)
 
-    // A call a hook or a permission refused did not fail on its own: it neither raises nor defeats a bug.
-    if ('deny' in ran && ran.deny) {
-      await publishView($, buildView(tracker, usage, await $.clock.now(), settings), cache)
-    } else {
-      const finishedAt = await $.clock.now()
-      const rejected = isRejection({ tool: use.tool, isError: ran.isError === true, text: ran.text })
-      const done = toolFinished(tracker, {
-        use,
-        isError: ran.isError === true,
-        rejected,
-        now: finishedAt,
-        durationMs: finishedAt - startedAt,
-      })
-      tracker = done.tracker
-      trace = appendTrace(trace, {
-        at: finishedAt,
-        what: 'tool',
-        tool: use.tool,
-        program: use.command === undefined ? undefined : programOf(use.command),
-        kind: kindOf(use),
-        shown: tracker.active,
-        paid: done.gain?.cls ?? (ran.isError === true ? undefined : classOf(use, tracker.planMode)),
-        planMode: tracker.planMode,
-        isError: ran.isError === true && !rejected ? true : undefined,
-        rejected: rejected ? true : undefined,
-      })
-      await saveTrace($, trace)
-      await applyGain($, tracker, done.gain)
-      await publishView($, buildView(tracker, usage, finishedAt, settings), cache)
+    // What follows only records the call: whatever fails there, the tool's own result goes back as it is.
+    try {
+      // A call a hook or a permission refused did not fail on its own: it neither raises nor defeats a bug.
+      if ('deny' in ran && ran.deny) {
+        await publishQuietly($, async () => buildView(tracker, usage, await $.clock.now(), settings), cache)
+      } else {
+        const finishedAt = await $.clock.now()
+        const rejected = isRejection({ tool: use.tool, isError: ran.isError === true, text: ran.text })
+        const done = toolFinished(tracker, {
+          use,
+          isError: ran.isError === true,
+          rejected,
+          now: finishedAt,
+          durationMs: finishedAt - startedAt,
+        })
+        tracker = done.tracker
+        trace = appendTrace(trace, {
+          at: finishedAt,
+          what: 'tool',
+          tool: use.tool,
+          program: use.command === undefined ? undefined : programOf(use.command),
+          kind: kindOf(use),
+          shown: tracker.active,
+          paid: done.gain?.cls ?? (ran.isError === true ? undefined : classOf(use, tracker.planMode)),
+          planMode: tracker.planMode,
+          isError: ran.isError === true && !rejected ? true : undefined,
+          rejected: rejected ? true : undefined,
+        })
+        await saveTrace($, trace)
+        await applyGain($, tracker, done.gain)
+        await publishQuietly($, () => buildView(tracker, usage, finishedAt, settings), cache)
+      }
+    } catch {
+      cache.signature = ''
     }
 
     return ran

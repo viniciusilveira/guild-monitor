@@ -29,6 +29,7 @@ const sleep = (ms: number) => new Promise<void>(resolve => later.setTimeout(reso
 // The calls that reached the tool beneath the plugin (and, inside a subagent, those with an agentId): the
 // plugin's handler has then already put them in its memory. The test waits for them instead of a fixed time.
 const entered = new Set<string>()
+let runs: Record<string, number> = {}
 
 const until = async (check: () => boolean | Promise<boolean>, what: string): Promise<void> => {
   for (let waited = 0; waited < 2_000; waited += 5) {
@@ -49,6 +50,7 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   refused.clear()
   thrown.clear()
   entered.clear()
+  runs = {}
   const clock = mock.clock(on, { now: START })
   mountStore(on)
   on('session.usage', async () => ({ value: { startedAt: 0, context: { percent: 30 }, rateLimits: [], cost: { usd: 1.5 } } }) as never)
@@ -58,6 +60,7 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   on('turn.complete', async () => ({ text: 'feito' }) as never)
   on('tool.call', async (_$, e) => {
     entered.add(e.tool)
+    runs[e.tool] = (runs[e.tool] ?? 0) + 1
     await gates.get(e.tool)
     if (thrown.has(e.tool)) throw new Error('boom')
     if (refused.has(e.tool)) return { deny: 'blocked' } as never
@@ -479,4 +482,30 @@ test('screen doing: the demo scenes show a call in progress', async ($, on) => {
     await $.command.run({ command: 'guild', args: scene } as never)
     expect(await panelShows($, text)).toBe(true)
   }
+})
+
+test('screen doing: a store that fails after the tool ran never changes the result or runs the tool again', { options: { layout: 'bar' } }, async ($, on) => {
+  let isDown = false
+  const store = (on: On) => {
+    on('store.get', async () => ({ value: undefined }) as never)
+    on('store.set', async () => {
+      if (isDown) throw new Error('store is down')
+
+      return { value: undefined } as never
+    })
+  }
+  await setup($, on, tool => tool === 'Bash', () => 'Exit code 1', store)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  isDown = true
+
+  const done = (await $.tool.call({ tool: 'Edit', ...EDIT } as never)) as { result?: string }
+  expect(done.result).toBe('ok')
+
+  const failed = (await $.tool.call({ tool: 'Bash', command: 'npm test' } as never)) as { isError?: boolean; text?: string }
+  expect(failed.isError).toBe(true)
+  expect(failed.text).toBe('Exit code 1')
+
+  // Each call reached the tool once: the failure of the record did not make the engine run it again.
+  expect(runs).toEqual({ Edit: 1, Bash: 1 })
+  expect(await panelShows($, /editando|executando/)).toBe(false)
 })
