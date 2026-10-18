@@ -1,0 +1,22 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm install --global @anthropic-ai/claude-code
+      # The engine writes its type declarations when it loads the plugin in a session, which CI never does.
+      - run: scripts/verify
+        env:
+          VERIFY_SKIP_TYPES: "1"
