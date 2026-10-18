@@ -24,7 +24,7 @@ stray_colors() {
     case "$file" in
       *.test.ts | */sprites.generated.ts | */schemes.ts) continue ;;
     esac
-    grep -nE "#[0-9A-Fa-f]{6}\b|color=(\"|\{['\"])|color: *['\"]" "$file" | grep -v 'export const COLORS' | sed "s|^|$file:|"
+    grep -nE "#[0-9A-Fa-f]{3,8}\b|rgba?\(|[cC]olor=\"|[cC]olor=\{[^}]*['\"]|[cC]olor: *['\"]" "$file" | grep -v 'export const COLORS' | sed "s|^|$file:|"
   done
 }
 
@@ -52,8 +52,12 @@ case "${1:-}" in
     printf '%s\n' 'const t = <Text color="red">x</Text>' >"$dir/prop.tsx"
     printf '%s\n' "const t = <Text color={'red'}>x</Text>" >"$dir/braces.tsx"
     printf '%s\n' "const t = { color: 'blue' }" >"$dir/object.ts"
+    printf '%s\n' "const t = <Text color={ok ? '#fff' : 'red'}>x</Text>" >"$dir/ternary.tsx"
+    printf '%s\n' "const c = '#fff'" >"$dir/short.ts"
+    printf '%s\n' "const c = rgb(1, 2, 3)" >"$dir/rgb.ts"
+    printf '%s\n' "const t = <Text color={ok ? colors.a : 'blue'}>x</Text>" >"$dir/named.tsx"
     found="$(stray_colors "$dir")"
-    for each in hex.ts prop.tsx braces.tsx object.ts; do
+    for each in hex.ts prop.tsx braces.tsx object.ts ternary.tsx short.ts rgb.ts named.tsx; do
       echo "$found" | grep -q "$each" || { echo "fail: the scan missed $each"; exit 1; }
     done
     ;;
