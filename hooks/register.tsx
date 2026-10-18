@@ -29,7 +29,8 @@ const viewAtom = atom({ plugin: 'guild-monitor', key: 'view' } as const, null)
 const panelAtom = atom({ plugin: 'guild-monitor', key: 'panel' } as const, false)
 
 const PANEL_ID = 'guild'
-const PANEL_COLUMNS = 36
+// Wide enough for the full character with its stats beside it (see `STATS_COLUMNS`).
+const PANEL_COLUMNS = 62
 // What the person chose about the panel, kept between sessions.
 const UI_KEY = 'guild.ui.v1'
 

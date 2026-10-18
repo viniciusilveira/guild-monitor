@@ -125,6 +125,14 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
   const others = view.chars.filter(char => char.cls !== view.active)
   const history = view.recent.slice(-HISTORY_ROWS).reverse()
 
+  // Beside a full character the bug fits right under the stats: seven lines and eight rows are its 16.
+  const bugUnderStats = layout.bug && layout.stats === 'beside' && layout.active === 'full'
+  const bugBox = (
+    <Box key="bug-box" flexDirection="column">
+      <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
+    </Box>
+  )
+
   return (
     <Box flexDirection="column">
       <Button key="collapse" label="recolher" hotkey="r" dimColor onPress={onCollapse} />
@@ -140,16 +148,12 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
         {layout.stats === 'beside' && (
           <Box flexDirection="column" width={STATS_COLUMNS} alignSelf="flex-start">
             {statLines(ui, view, active, now)}
+            {bugUnderStats && bugBox}
           </Box>
         )}
       </Box>
       {layout.stats === 'below' && statLines(ui, view, active, now)}
-      {layout.bug && (
-        <Box flexDirection="column">
-          <Raster key="bug" columns={mini.columns} rows={mini.rows} cells={cellsFor('bug', 'bug', 'mini')} />
-          <Text color="red">Bug</Text>
-        </Box>
-      )}
+      {layout.bug && !bugUnderStats && bugBox}
       {layout.others !== null && (
         <Box flexDirection={layout.others === 'row' ? 'row' : 'column'} gap={1}>
           {others.map(char => (
