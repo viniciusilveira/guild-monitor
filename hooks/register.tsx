@@ -6,6 +6,8 @@ import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
 import { targetOf } from './doing'
 import { choiceOf, demoState, SCENES, sceneOf } from './demo'
+import type { History } from './forecast'
+import { EMPTY_HISTORY, recordReadings } from './forecast'
 import type { Settings } from './guild'
 import { DEFAULTS, isRejection } from './guild'
 import type { Size } from './layout'
@@ -147,12 +149,16 @@ export const register: Register = (on, options) => {
     tiredAtPercent: positive(options.tiredAtPercent, DEFAULTS.tiredAtPercent),
   }
   const bandSize = options.bandSize === 'compact' ? 'compact' : 'full'
+  // The forecast of the windows: on unless the person turned it off (anything else counts as on).
+  const showForecast = options.showForecast !== 'off'
   const layoutMode = options.layout === 'bar' || options.layout === 'panel' ? options.layout : 'auto'
   // A demo scene shows made-up figures and ignores the session.
   let scene = sceneOf(options.demo)
 
   let tracker: Tracker = createTracker(emptyGuild(), 0)
   let usage: Usage = { rateLimits: [] }
+  // The recent readings of the rate limits, for the forecast: in memory only, never saved.
+  let history: History = EMPTY_HISTORY
   let trace: TraceEntry[] = []
   let bandId: string | undefined
   // False until the guild is read from the store: before that the band keeps showing the last view.
@@ -163,8 +169,18 @@ export const register: Register = (on, options) => {
 
   const cache: PublishCache = { signature: '' }
 
-  const stateAt = (now: number): { tracker: Tracker; usage: Usage } =>
-    scene === undefined ? { tracker, usage } : demoState(scene, now, settings)
+  const stateAt = (now: number): { tracker: Tracker; usage: Usage; history: History } =>
+    scene === undefined ? { tracker, usage, history } : demoState(scene, now, settings)
+
+  // What the view shows of the forecast comes from `history`, and from nothing when the option is off.
+  const viewOf = (from: Tracker, figures: Usage, now: number, readings: History = history): ViewModel =>
+    buildView(from, figures, now, settings, showForecast ? readings : EMPTY_HISTORY)
+
+  // Only what the engine just reported is a reading: the known figures that `mergeUsage` keeps for a window
+  // the engine did not report again would count as readings in which nothing changed.
+  const record = (fresh: Usage, now: number): void => {
+    if (showForecast) history = recordReadings(history, fresh.rateLimits, now)
+  }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -172,8 +188,12 @@ export const register: Register = (on, options) => {
       description: 'Abre ou fecha o painel lateral da guilda e mostra cenas de demonstração',
       argumentHint: `[panel|bar|trace|${SCENES.join('|')}|off]`,
     })
-    tracker = createTracker(parseGuild(await $.store.get(STORE_KEY)), await $.clock.now())
-    usage = mergeUsage(usage, usageFrom(await $.session.usage()))
+    const startedAt = await $.clock.now()
+    tracker = createTracker(parseGuild(await $.store.get(STORE_KEY)), startedAt)
+    const first = usageFrom(await $.session.usage())
+    usage = mergeUsage(usage, first)
+    history = EMPTY_HISTORY
+    record(first, startedAt)
     trace = parseTrace(await $.store.get(TRACE_KEY))
     isReady = true
     cache.signature = ''
@@ -196,11 +216,13 @@ export const register: Register = (on, options) => {
 
         if (now >= nextUsageAt) {
           nextUsageAt = now + USAGE_EVERY_MS
-          usage = mergeUsage(usage, usageFrom(await $.session.usage()))
+          const fresh = usageFrom(await $.session.usage())
+          usage = mergeUsage(usage, fresh)
+          record(fresh, now)
         }
 
         const state = stateAt(now)
-        const view = buildView(state.tracker, state.usage, now, settings)
+        const view = viewOf(state.tracker, state.usage, now, state.history)
         await publishView($, view, cache)
 
         if (bandId === undefined) return
@@ -273,7 +295,7 @@ export const register: Register = (on, options) => {
     tracker = startTurn(tracker, { id: e.turnId, prompt: e.text, now })
     trace = appendTrace(trace, { at: now, what: 'turn', tool: 'início (palpite do prompt)', shown: tracker.active, planMode: tracker.planMode })
     await saveTrace($, trace)
-    await publishView($, buildView(tracker, usage, now, settings), cache)
+    await publishView($, viewOf(tracker, usage, now), cache)
 
     return next(e)
   })
@@ -294,14 +316,14 @@ export const register: Register = (on, options) => {
     // The target is for the screen only: it goes into the tracker's memory and nowhere else.
     const callId = (nextCallId += 1)
     tracker = callStarted(toolStarted(tracker, use, startedAt), { id: callId, tool: use.tool, target: targetOf(use.tool, input) })
-    await publishQuietly($, () => buildView(tracker, usage, startedAt, settings), cache)
+    await publishQuietly($, () => viewOf(tracker, usage, startedAt), cache)
 
     let ran: Awaited<ReturnType<typeof next>>
     try {
       ran = await next(e)
     } catch (error) {
       tracker = callEnded(tracker, callId)
-      await publishQuietly($, async () => buildView(tracker, usage, await $.clock.now(), settings), cache)
+      await publishQuietly($, async () => viewOf(tracker, usage, await $.clock.now()), cache)
       throw error
     }
 
@@ -312,7 +334,7 @@ export const register: Register = (on, options) => {
     try {
       // A call a hook or a permission refused did not fail on its own: it neither raises nor defeats a bug.
       if ('deny' in ran && ran.deny) {
-        await publishQuietly($, async () => buildView(tracker, usage, await $.clock.now(), settings), cache)
+        await publishQuietly($, async () => viewOf(tracker, usage, await $.clock.now()), cache)
       } else {
         const finishedAt = await $.clock.now()
         const rejected = isRejection({ tool: use.tool, isError: ran.isError === true, text: ran.text })
@@ -338,7 +360,7 @@ export const register: Register = (on, options) => {
         })
         await saveTrace($, trace)
         await applyGain($, tracker, done.gain)
-        await publishQuietly($, () => buildView(tracker, usage, finishedAt, settings), cache)
+        await publishQuietly($, () => viewOf(tracker, usage, finishedAt), cache)
       }
     } catch {
       cache.signature = ''
@@ -353,7 +375,7 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const done = completeTurn(tracker, { id: e.turnId, reason: e.reason, now, durationMs: e.durationMs })
     tracker = done.tracker
-    await publishView($, buildView(tracker, usage, now, settings), cache)
+    await publishView($, viewOf(tracker, usage, now), cache)
 
     await applyGain($, tracker, done.gain)
 
@@ -361,8 +383,10 @@ export const register: Register = (on, options) => {
   })
 
   on('session.measure', async ($, e, next) => {
+    const now = await $.clock.now()
     usage = mergeUsage(usage, usageFrom(e))
-    await publishView($, buildView(tracker, usage, await $.clock.now(), settings), cache)
+    record(usageFrom(e), now)
+    await publishView($, viewOf(tracker, usage, now), cache)
 
     return next(e)
   })
@@ -389,7 +413,7 @@ export const register: Register = (on, options) => {
     const published = await read($, viewAtom)
     const now = await $.clock.now()
     const state = stateAt(now)
-    const view = isReady ? buildView(state.tracker, state.usage, now, settings) : published
+    const view = isReady ? viewOf(state.tracker, state.usage, now, state.history) : published
     if (view === null) return next(e)
 
     const layout = chooseSidebarLayout(e.props.bodyColumns, bandSize, view.bug)
@@ -431,7 +455,7 @@ export const register: Register = (on, options) => {
     const published = await read($, viewAtom)
     const now = await $.clock.now()
     const state = stateAt(now)
-    const view = isReady ? buildView(state.tracker, state.usage, now, settings) : published
+    const view = isReady ? viewOf(state.tracker, state.usage, now, state.history) : published
     if (view === null) return next(e)
 
     const layout = chooseLayout(e.props.bodyColumns, e.props.maxRows, bandSize, view.bug)

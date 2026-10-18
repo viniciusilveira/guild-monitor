@@ -47,6 +47,9 @@ type Says = (tool: string) => string | undefined
 // moves on its own afterwards, as a /clear does.
 let nextStart = 0
 let sessionStart = 0
+// The rate limits `session.usage` reports: a test sets `nextLimits` before `setup` and `limits` while the clock runs.
+let nextLimits: unknown[] = []
+let limits: unknown[] = []
 
 // The world beneath the guild plugin: a clock the test moves, a store holding a guild whose warrior is at level 3,
 // the session's figures and a tool runner that fails the calls the test says.
@@ -58,9 +61,11 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   runs = {}
   sessionStart = nextStart
   nextStart = 0
+  limits = nextLimits
+  nextLimits = []
   const clock = mock.clock(on, { now: START })
   mountStore(on)
-  on('session.usage', async () => ({ value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: [], cost: { usd: 1.5 } } }) as never)
+  on('session.usage', async () => ({ value: { startedAt: sessionStart, context: { percent: 30 }, rateLimits: limits, cost: { usd: 1.5 } } }) as never)
   on('command.register', async () => ({ value: { command: 'guild' } }) as never)
   on('session.start', async () => ({ cwd: '/tmp' }) as never)
   on('turn.start', async (_$, e) => ({ turnId: (e as { turnId: string }).turnId }) as never)
@@ -913,4 +918,329 @@ test('counters C19: the combo shows from the third success in a row', { options:
   expect(await countersLine($)).toBe('bugs 0')
   await edits($, 1)
   expect(await countersLine($)).toBe('combo x3 · melhor x3 · bugs 0')
+})
+
+// Forecast: readings of the rate limits that move with the clock. The session is read every 2 seconds, so a
+// series of minutes is a loop of minutes: the limits of that minute are set, then the clock runs through it.
+type Limit = { kind: string; percentUsed: number; resetsAt?: string }
+
+const RED = '#E74C3C'
+const resetsIn = (minutes: number) => new Date(START + minutes * MINUTE).toISOString()
+const five = (used: number, reset = 300): Limit => ({ kind: 'five_hour', percentUsed: used, resetsAt: resetsIn(reset) })
+const seven = (used: number, reset = 6 * 24 * 60): Limit => ({ kind: 'seven_day', percentUsed: used, resetsAt: resetsIn(reset) })
+
+type Clock = Awaited<ReturnType<typeof setup>>
+
+// `at(minute)` gives the limits of each minute from 1 to `minutes`; minute 0 is `nextLimits`, set before `setup`.
+const feed = async (clock: Clock, minutes: number, at: (minute: number) => Limit[], step = MINUTE) => {
+  for (let minute = 1; minute <= minutes; minute += 1) {
+    limits = at(minute)
+    await clock.advance(step)
+  }
+}
+
+// 33% rising a point a minute: about 50 minutes left, well before a reset 5 hours away.
+const hurried = (minute: number): Limit[] => [five(33 + minute)]
+
+// The readings span a little less than the minutes that ran: 12 of them cover the 10 the 5h window asks for.
+const start5 = async ($: Engine, on: On, fails: Fail = () => false) => {
+  nextLimits = hurried(0)
+  const clock = await setup($, on, fails)
+  await feed(clock, 12, hurried)
+
+  return clock
+}
+
+// Both windows for over two hours: 5h a point every 2 minutes (about 50 minutes left, the reset 5 hours away) and
+// 7d 3 points in about 2 hours (days left, but its reset in 24 hours comes first).
+const both = (minute: number): Limit[] => [five(5 + Math.floor(minute / 2), 300), seven(20 + Math.floor(minute / 50), 24 * 60)]
+
+const startBoth = async ($: Engine, on: On, fails: Fail = () => false) => {
+  nextLimits = both(0)
+  const clock = await setup($, on, fails)
+  await feed(clock, 140, both)
+
+  return clock
+}
+
+type Item = { text: string; color: unknown }
+
+const itemsOf = async (mounted: { findAll: Awaited<ReturnType<typeof mountPanel>>['findAll'] }): Promise<Item[]> =>
+  (await mounted.findAll({ type: 'Text' })).map(item => ({ text: item.text as string, color: item.props.color }))
+
+const panelItems = async ($: Engine, columns = 60): Promise<Item[]> => {
+  const panel = await mountPanel($, columns)
+  const items = await itemsOf(panel)
+  await panel.unmount()
+
+  return items
+}
+
+const bandItems = async ($: Engine, columns = 120, rows = 20): Promise<Item[]> => {
+  const band = await mountBand($, columns, rows)
+  const items = await itemsOf(band)
+  await band.unmount()
+
+  return items
+}
+
+const FORECAST_LINE = /^(5h|7d) /
+const isForecast = (item: Item) => FORECAST_LINE.test(item.text)
+const WORDS = /esgota|sem consumo|dura até|esgotado/
+
+// The minutes in "5h esgota em ~50min" or "5h esgota em ~1h05".
+const minutesOf = (text: string): number => {
+  const hours = /~(\d+)h(\d\d)/.exec(text)
+  if (hours !== null) return Number(hours[1]) * 60 + Number(hours[2])
+
+  return Number(/~(\d+)min/.exec(text)?.[1])
+}
+
+test('forecast C14: the panel shows a line per window after the legend, red only before the reset', { timeoutMs: 60_000, options: { layout: 'bar' } }, async ($, on) => {
+  await startBoth($, on)
+
+  const items = await panelItems($)
+  const texts = items.map(item => item.text)
+  const hours = items.find(item => item.text.startsWith('5h '))
+  const week = items.find(item => item.text.startsWith('7d '))
+
+  expect(hours?.text).toMatch(/^5h esgota em ~/)
+  expect(minutesOf(hours?.text ?? '')).toBeGreaterThanOrEqual(40)
+  expect(minutesOf(hours?.text ?? '')).toBeLessThanOrEqual(60)
+  expect(hours?.color).toBe(RED)
+  expect(week?.text).toBe('7d dura até o reset')
+  expect(week?.color).not.toBe(RED)
+
+  // After the legend, before the counters and the times.
+  const legend = texts.indexOf('HP=7d MP=5h ST=ctx')
+  expect(legend).toBeGreaterThanOrEqual(0)
+  expect(texts.indexOf(hours?.text ?? '')).toBeGreaterThan(legend)
+  expect(texts.indexOf(week?.text ?? '')).toBeGreaterThan(texts.indexOf(hours?.text ?? ''))
+  expect(texts.findIndex(text => /^(combo|melhor|bugs) /.test(text))).toBeGreaterThan(texts.indexOf(week?.text ?? ''))
+  expect(texts.findIndex(text => /^sessão /.test(text))).toBeGreaterThan(texts.indexOf(week?.text ?? ''))
+})
+
+test('forecast C14: a 5h pace that outlasts the reset says so and is not red', { timeoutMs: 60_000, options: { layout: 'bar' } }, async ($, on) => {
+  // A point every 6 minutes leaves hours; the reset is 100 minutes away.
+  nextLimits = [five(10, 100)]
+  const clock = await setup($, on)
+  await feed(clock, 30, minute => [five(10 + Math.floor(minute / 6), 100)])
+
+  const calm = (await panelItems($)).find(isForecast)
+  expect(calm?.text).toBe('5h dura até o reset')
+  expect(calm?.color).not.toBe(RED)
+})
+
+test('forecast C15: the 20 column panel lines are at most 20 characters', { options: { layout: 'bar' } }, async ($, on) => {
+  await start5($, on)
+
+  const lines = (await panelItems($, 20)).filter(isForecast)
+  expect(lines.map(item => item.text.slice(0, 2))).toEqual(['5h'])
+  expect(lines[0]?.text).toMatch(/^5h esgota em ~/)
+  expect(lines[0]?.text.length).toBeLessThanOrEqual(20)
+
+  // Narrower than the whole line, the shorter wording; narrower than that, no line instead of a wrapped one.
+  expect((await panelItems($, 18)).find(isForecast)?.text).toMatch(/^5h esgota ~\d+min$/)
+  expect((await panelItems($, 14)).some(isForecast)).toBe(false)
+})
+
+test('forecast C16: the compact band keeps eight lines and yields to the bug', { options: { layout: 'bar', bandSize: 'compact' } }, async ($, on) => {
+  nextLimits = hurried(0)
+  const clock = await setup($, on, tool => tool === 'Bash')
+  await feed(clock, 12, hurried)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const quiet = (await bandItems($, 60, 8)).map(item => item.text)
+  expect(quiet.length).toBe(8)
+  expect(quiet.filter(text => FORECAST_LINE.test(text)).length).toBe(1)
+  // The forecast takes the legend's line, the last of the box.
+  expect(quiet[7]).toMatch(/^5h esgota em ~/)
+  expect(quiet[7]?.length).toBeLessThanOrEqual(28)
+  expect(quiet).not.toContain('HP=7d MP=5h ST=ctx')
+
+  await call($, 'Bash', { command: 'npm test' })
+  const withBug = (await bandItems($, 60, 8)).map(item => item.text)
+  expect(withBug.length).toBeLessThanOrEqual(8)
+  expect(withBug).toContain('bug na área!')
+  expect(withBug.some(text => FORECAST_LINE.test(text))).toBe(false)
+})
+
+test('forecast C17: the full band shows one short line within sixteen rows', { options: { layout: 'bar' } }, async ($, on) => {
+  await start5($, on, tool => tool === 'Bash')
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+
+  const quiet = (await bandItems($)).map(item => item.text)
+  const lines = quiet.filter(text => FORECAST_LINE.test(text))
+  // One line, right after the gold line and before the legend.
+  expect(lines.length).toBe(1)
+  expect(lines[0]).toMatch(/^5h esgota em ~/)
+  expect(lines[0]?.length).toBeLessThanOrEqual(28)
+  expect(quiet.indexOf(lines[0] ?? '')).toBe(quiet.findIndex(text => /^ouro /.test(text)) + 1)
+  expect(quiet.indexOf('HP=7d MP=5h ST=ctx')).toBe(quiet.indexOf(lines[0] ?? '') + 1)
+
+  // With the bug under the stats the box is the doing line, six stats and the forecast: 8 lines, and the bug's
+  // 8 rows under them are 16.
+  await call($, 'Bash', { command: 'npm test' })
+  const band = await mountBand($)
+  const withBug = (await itemsOf(band)).map(item => item.text)
+  expect(await band.find({ key: 'bug' })).toBeDefined()
+  await band.unmount()
+
+  const at = withBug.findIndex(text => FORECAST_LINE.test(text))
+  expect(at).toBeGreaterThan(0)
+  expect(withBug.filter(text => FORECAST_LINE.test(text)).length).toBe(1)
+  expect(withBug).not.toContain('HP=7d MP=5h ST=ctx')
+  expect(at + 1 + 8).toBeLessThanOrEqual(16)
+  expect(withBug[at + 1]).not.toBe('bug na área!')
+})
+
+test('forecast C18: without enough readings no forecast line appears', { options: { layout: 'bar' } }, async ($, on) => {
+  nextLimits = hurried(0)
+  const clock = await setup($, on)
+  // Three minutes of readings: samples, but not the 10 minutes the 5h window asks for.
+  await feed(clock, 3, hurried)
+
+  for (const items of [await panelItems($), await bandItems($)]) {
+    expect(items.some(isForecast)).toBe(false)
+    expect(items.some(item => WORDS.test(item.text))).toBe(false)
+  }
+})
+
+test('forecast C18: outside a subscription no forecast line appears', { options: { layout: 'bar' } }, async ($, on) => {
+  nextLimits = []
+  const clock = await setup($, on)
+  await feed(clock, 15, () => [])
+
+  expect((await panelItems($)).some(item => isForecast(item) || WORDS.test(item.text))).toBe(false)
+  expect((await bandItems($)).some(item => isForecast(item) || WORDS.test(item.text))).toBe(false)
+})
+
+test('forecast C19: showForecast off hides every forecast line', { options: { layout: 'bar', showForecast: 'off' } }, async ($, on) => {
+  await start5($, on)
+
+  const panel = await panelItems($)
+  const band = await bandItems($)
+  const compact = await bandItems($, 60, 8)
+  for (const items of [panel, band, compact]) expect(items.some(item => isForecast(item) || WORDS.test(item.text))).toBe(false)
+  // The rest is where it was: the legend and the meters.
+  expect(panel.map(item => item.text)).toContain('HP=7d MP=5h ST=ctx')
+  expect(compact.map(item => item.text)).toContain('HP=7d MP=5h ST=ctx')
+  expect(panel.some(item => /^MP /.test(item.text))).toBe(true)
+})
+
+test('forecast C20: a missing or unknown showForecast keeps the forecast on', { options: { layout: 'bar', showForecast: 'talvez' } }, async ($, on) => {
+  await start5($, on)
+
+  expect((await panelItems($)).some(item => /^5h esgota em ~/.test(item.text))).toBe(true)
+})
+
+test('forecast C21: no store write, trace entry or toast carries the forecast', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: string[] = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 159 } } : undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push(JSON.stringify([e.key, e.value]))
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(JSON.stringify(e))
+
+      return { value: undefined } as never
+    })
+  }
+  nextLimits = hurried(0)
+  const clock = await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await feed(clock, 12, hurried)
+  await call($, 'Edit', EDIT)
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 7_777 } as never)
+
+  // The forecast is on screen, so the test would notice if it leaked.
+  expect((await panelItems($)).some(item => /^5h esgota em ~/.test(item.text))).toBe(true)
+  expect(toasts.length).toBeGreaterThan(0)
+  expect(writes.length).toBeGreaterThan(0)
+  expect(new Set(writes.map(write => (JSON.parse(write) as [string])[0]))).toEqual(new Set(['guild.trace.v1', 'guild.v1']))
+  expect([...writes, ...toasts].join('\n')).not.toMatch(/esgota|sem consumo|dura até|esgotado|five_hour|seven_day|percentUsed|samples|resetsAt|"used"/)
+})
+
+test('forecast C22: a window reset takes the line away until new samples are enough', { options: { layout: 'bar' } }, async ($, on) => {
+  const clock = await start5($, on)
+  const line = async () => (await panelItems($)).find(item => item.text.startsWith('5h '))
+  expect(await line()).toBeDefined()
+
+  // The percent drops: a new window, whose reset time is new too. A single reading says nothing.
+  limits = [five(2, 600)]
+  await clock.advance(MINUTE)
+  expect(await line()).toBeUndefined()
+  expect((await bandItems($)).some(isForecast)).toBe(false)
+
+  // It comes back with new readings, 10 minutes of them, at the new pace.
+  await feed(clock, 12, minute => [five(2 + minute, 600)])
+  expect((await line())?.text).toMatch(/^5h esgota em ~/)
+
+  // Only the reset time changing, with the percent still rising, is a reset too.
+  limits = [five(40, 900)]
+  await clock.advance(MINUTE)
+  expect(await line()).toBeUndefined()
+})
+
+const SCENES = ['explorador', 'mago', 'guerreiro', 'bug', 'cansado', 'dormindo']
+
+test('forecast C23: every demo scene shows a made-up forecast', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+
+  for (const scene of SCENES) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+    const items = await panelItems($)
+
+    const hours = items.find(item => item.text === '5h esgota em ~1h30')
+    const week = items.find(item => item.text === '7d dura até o reset')
+
+    expect(hours?.color).toBe(RED)
+    expect(week).toBeDefined()
+    expect(week?.color).not.toBe(RED)
+  }
+
+  await $.command.run({ command: 'guild', args: 'guerreiro' } as never)
+  expect((await bandItems($)).some(item => item.text === '5h esgota em ~1h30')).toBe(true)
+})
+
+test('forecast C23: every demo scene shows no forecast when showForecast is off', { options: { layout: 'bar', showForecast: 'off' } }, async ($, on) => {
+  await setup($, on)
+
+  for (const scene of SCENES) {
+    await $.command.run({ command: 'guild', args: scene } as never)
+
+    expect((await panelItems($)).some(item => isForecast(item) || WORDS.test(item.text))).toBe(false)
+    expect((await bandItems($)).some(item => isForecast(item) || WORDS.test(item.text))).toBe(false)
+  }
+})
+
+test('forecast C13: readings that come with the session measurement count too', { options: { layout: 'bar' } }, async ($, on) => {
+  on('session.measure', async (_$, e) => ({ changed: (e as { changed: string[] }).changed }) as never)
+  const clock = await setup($, on)
+
+  // The session itself reports no limits; only the measurements do, a point a minute.
+  for (let minute = 0; minute <= 12; minute += 1) {
+    await $.session.measure({ context: { percent: 30 }, rateLimits: [five(33 + minute)], changed: ['rateLimits'] } as never)
+    await clock.advance(MINUTE)
+  }
+
+  expect((await panelItems($)).find(isForecast)?.text).toMatch(/^5h esgota em ~/)
+})
+
+test('forecast C13: a window the engine stops reporting is not read again as idle', { options: { layout: 'bar' } }, async ($, on) => {
+  const clock = await start5($, on)
+
+  // The 5h window is gone from the reports (the session keeps its last figure): ten minutes later nothing is said,
+  // not "sem consumo" and not the old pace.
+  limits = [seven(20)]
+  await feed(clock, 10, () => [seven(20)])
+
+  const items = await panelItems($)
+  expect(items.some(item => /^MP /.test(item.text))).toBe(true)
+  expect(items.some(item => item.text.startsWith('5h '))).toBe(false)
+  expect(items.some(item => /sem consumo/.test(item.text))).toBe(false)
 })

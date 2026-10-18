@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { DEFAULTS, DEFEAT_MS } from './guild'
 import { chooseLayout } from './layout'
 import { completeTurn, createTracker, startTurn, toolFinished } from './tracker'
-import { bar, buildView, costText, durationText, frameAt, healthColor, mergeUsage, METER_COLORS, percentText, agoText, sheetIdFor, stateText, untilReset, usageFrom } from './view'
+import { bandForecast, bar, buildView, fitForecast, costText, durationText, frameAt, healthColor, mergeUsage, METER_COLORS, percentText, agoText, sheetIdFor, stateText, untilReset, usageFrom } from './view'
 import { addXp, emptyGuild } from './xp'
 
 const NOW = 1_000_000
@@ -298,4 +298,37 @@ test('timers C11b: the view is the same within a second and differs across it', 
   expect(at(1_950)).toBe(at(1_000))
   expect(at(2_000)).not.toBe(at(1_950))
   expect(at(0)).not.toBe(at(1_000))
+})
+
+const line = (text: string, urgent = false, short = text.replace(' em ', ' ')) => ({ text, short, urgent })
+
+test('forecast C15 fit: a line takes the shorter wording to fit and is dropped when not even that fits', () => {
+  const week = line('esgota em ~66 dias')
+  const hours = line('esgota em ~50min')
+  const reset = line('dura até o reset')
+
+  expect(fitForecast('7d', week, 28)).toBe('7d esgota em ~66 dias')
+  // 21 characters do not fit 20: the shorter wording has 18.
+  expect(fitForecast('7d', week, 20)).toBe('7d esgota ~66 dias')
+  expect(fitForecast('7d', week, 21)).toBe('7d esgota em ~66 dias')
+  expect(fitForecast('7d', week, 18)).toBe('7d esgota ~66 dias')
+  expect(fitForecast('7d', week, 17)).toBeNull()
+  expect(fitForecast('5h', hours, 19)).toBe('5h esgota em ~50min')
+  expect(fitForecast('5h', hours, 18)).toBe('5h esgota ~50min')
+  expect(fitForecast('7d', reset, 19)).toBe('7d dura até o reset')
+  expect(fitForecast('7d', reset, 18)).toBeNull()
+  expect(fitForecast('5h', hours, 0)).toBeNull()
+})
+
+test('forecast C17 pick: the band line is the urgent window, else the 5h one, else the week', () => {
+  const calm = line('dura até o reset')
+  const red = line('esgota em ~40min', true)
+  const idle = line('sem consumo')
+
+  expect(bandForecast({ fiveHour: null, sevenDay: null })).toBeNull()
+  expect(bandForecast({ fiveHour: calm, sevenDay: red })).toEqual({ label: '7d', line: red })
+  expect(bandForecast({ fiveHour: red, sevenDay: red })).toEqual({ label: '5h', line: red })
+  expect(bandForecast({ fiveHour: calm, sevenDay: idle })).toEqual({ label: '5h', line: calm })
+  expect(bandForecast({ fiveHour: null, sevenDay: idle })).toEqual({ label: '7d', line: idle })
+  expect(bandForecast({ fiveHour: idle, sevenDay: null })).toEqual({ label: '5h', line: idle })
 })

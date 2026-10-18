@@ -3,6 +3,8 @@ import { DEFAULTS } from './guild'
 import type { Counters } from './counters'
 import type { Tracker } from './tracker'
 import { callStarted, createTracker, startTurn, toolFinished, toolStarted } from './tracker'
+import type { History } from './forecast'
+import { addSample, EMPTY_HISTORY } from './forecast'
 import type { Usage } from './view'
 import { addXp, emptyGuild } from './xp'
 
@@ -48,12 +50,27 @@ const demoGuild = () => {
 const working = (tracker: Tracker, now: number, tool: string, target?: string): Tracker =>
   callStarted(toolStarted(startTurn(tracker, { id: 'demo', prompt: '', now: now - DEMO_TURN_MS }), { tool }, now), { id: 1, tool, target })
 
+// The made-up readings behind the forecasts, through the same code the real ones go through: the 5-hour window
+// climbs 5 points every 10 minutes (90 minutes left, the reset in 133: red) and the week 1 point every 3 hours
+// (9 days left, the reset in 2: it lasts).
+const demoReadings = (now: number, usage: Usage): History => {
+  const five = usage.rateLimits.find(limit => limit.kind === 'five_hour')
+  const week = usage.rateLimits.find(limit => limit.kind === 'seven_day')
+  const hours = [40, 45, 50, 55].map((used, i) => ({ at: now - (3 - i) * 10 * MINUTE_MS, used, resetsAt: five?.resetsAt }))
+  const weeks = [26, 27, 28].map((used, i) => ({ at: now - (2 - i) * 180 * MINUTE_MS, used, resetsAt: week?.resetsAt }))
+
+  return {
+    five_hour: hours.reduce((series, sample) => addSample(series, sample, 'five_hour'), EMPTY_HISTORY.five_hour),
+    seven_day: weeks.reduce((series, sample) => addSample(series, sample, 'seven_day'), EMPTY_HISTORY.seven_day),
+  }
+}
+
 const sceneState = (scene: Scene, now: number, settings: Settings): { tracker: Tracker; usage: Usage } => {
   const base = createTracker(demoGuild(), now)
   const usage: Usage = {
     contextPercent: scene === 'cansado' ? 88 : 36,
     rateLimits: [
-      { kind: 'seven_day', percentUsed: 28 },
+      { kind: 'seven_day', percentUsed: 28, resetsAt: new Date(now + 2 * 24 * 60 * MINUTE_MS).toISOString() },
       { kind: 'five_hour', percentUsed: 55, resetsAt: new Date(now + 133 * MINUTE_MS).toISOString() },
     ],
     costUsd: 3.42,
@@ -87,11 +104,11 @@ const demoHistory = (now: number): Tracker['recent'] => [
   { cls: 'guerreiro', xp: 3, at: now - 1 * MINUTE_MS, tool: 'resposta' },
 ]
 
-export const demoState = (scene: Scene, now: number, settings: Settings = DEFAULTS): { tracker: Tracker; usage: Usage } => {
+export const demoState = (scene: Scene, now: number, settings: Settings = DEFAULTS): { tracker: Tracker; usage: Usage; history: History } => {
   const state = sceneState(scene, now, settings)
 
   // Made-up scores; the bug scene has just lost its combo to the failing call.
   const counters: Counters = scene === 'bug' ? { ...DEMO_COUNTERS, combo: 0 } : DEMO_COUNTERS
 
-  return { tracker: { ...state.tracker, counters, recent: demoHistory(now) }, usage: state.usage }
+  return { tracker: { ...state.tracker, counters, recent: demoHistory(now) }, usage: state.usage, history: demoReadings(now, state.usage) }
 }

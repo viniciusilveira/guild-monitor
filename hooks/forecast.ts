@@ -161,8 +161,8 @@ const short = (ms: number): string => {
 }
 
 // "esgota em ~40min", "esgota em ~2h05", "esgota em ~3 dias" (only the 7-day window), "dura até o reset",
-// "sem consumo" or "esgotado"; null when there is nothing to say.
-export const forecastText = (forecast: Forecast, kind: WindowKind): string | null => {
+// "sem consumo" or "esgotado"; null when there is nothing to say. `shorter` drops the "em" of a narrow place.
+export const forecastText = (forecast: Forecast, kind: WindowKind, shorter = false): string | null => {
   if (forecast.kind === 'idle') return 'sem consumo'
   if (forecast.kind === 'exhausted') return 'esgotado'
   if (forecast.kind === 'lasts') return 'dura até o reset'
@@ -173,18 +173,18 @@ export const forecastText = (forecast: Forecast, kind: WindowKind): string | nul
   if (kind === 'seven_day' && ms >= DAY_MS) {
     const days = Math.ceil(ms / DAY_MS)
 
-    return `esgota em ~${days} ${days === 1 ? 'dia' : 'dias'}`
+    return `esgota ${shorter ? '' : 'em '}~${days} ${days === 1 ? 'dia' : 'dias'}`
   }
 
-  return `esgota em ~${short(ms)}`
+  return `esgota ${shorter ? '' : 'em '}~${short(ms)}`
 }
 
 // What the screen shows for a window: the text and whether it is red; null when there is nothing to show.
-export type ForecastLine = { text: string; urgent: boolean }
+export type ForecastLine = { text: string; short: string; urgent: boolean }
 
 export const forecastLine = (series: Series, now: number, kind: WindowKind): ForecastLine | null => {
   const forecast = forecastOf(series, now, kind)
   const text = forecastText(forecast, kind)
 
-  return text === null ? null : { text, urgent: forecast.kind === 'runs' && forecast.urgent }
+  return text === null ? null : { text, short: forecastText(forecast, kind, true) ?? text, urgent: forecast.kind === 'runs' && forecast.urgent }
 }
