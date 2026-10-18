@@ -27,8 +27,10 @@ const READ_CLAUDE = new Set(['plugin list', '--version'])
 const words = (text: string): string[] => text.trim().split(/\s+/).filter(Boolean)
 
 // Splits at | || && ; that are not inside quotes, so `sed -n '1p;3p'` and
-// `grep -E 'a|b'` stay one piece.
-const pieces = (command: string): string[] => {
+// `grep -E 'a|b'` stay one piece. A backslash outside single quotes copies the
+// next character as is. Undefined when a quote is left open: we cannot tell what
+// the shell would run, so the caller treats it as not read-only.
+const pieces = (command: string): string[] | undefined => {
   const result: string[] = []
   let current = ''
   let quote = ''
@@ -36,7 +38,10 @@ const pieces = (command: string): string[] => {
   for (let i = 0; i < command.length; i += 1) {
     const char = command[i]
 
-    if (quote) {
+    if (char === '\\' && quote !== "'") {
+      current += char + (command[i + 1] ?? '')
+      i += 1
+    } else if (quote) {
       if (char === quote) quote = ''
       current += char
     } else if (char === "'" || char === '"') {
@@ -51,17 +56,23 @@ const pieces = (command: string): string[] => {
     }
   }
 
-  return [...result, current]
+  return quote ? undefined : [...result, current]
 }
 
 // `sed` edits in place with -i, alone or inside a cluster (-ni, -i.bak), or --in-place.
 const sedEditsInPlace = (args: string[]): boolean => args.some(arg => /^-[A-Za-z]*i/.test(arg) || arg.startsWith('--in-place'))
 
 // `awk` reads unless its program runs a command (system, getline, a pipe), comes
-// from a file we cannot see (-f) or edits in place (-i). Writing to a file is a
+// from a file we cannot see (-f, -E) or edits in place (-i). Writing to a file is a
 // redirection, already caught for the whole command.
 const awkRunsCode = (args: string[], text: string): boolean =>
-  /\bsystem\s*\(|\bgetline\b|\|/.test(text) || args.some(arg => /^(-f|--file|-i|--include)/.test(arg))
+  /\bsystem\s*\(|\bgetline\b|\|/.test(text) || args.some(arg => /^(-f|--file|-i|--include|-E|--exec)/.test(arg))
+
+// `hostname name` sets the name; only flags and no argument read it.
+const hostnameSets = (args: string[]): boolean => args.some(arg => !arg.startsWith('-'))
+
+// `less -o file` and `-O file` write the input to a file.
+const lessWrites = (args: string[]): boolean => args.some(arg => /^-[A-Za-z]*[oO]/.test(arg) || /^--log-file/i.test(arg))
 
 const isReadPart = (text: string): boolean => {
   const [head = '', ...args] = words(text)
@@ -72,6 +83,8 @@ const isReadPart = (text: string): boolean => {
   if (head === 'claude') return READ_CLAUDE.has(`${second} ${third}`.trim())
   if (head === 'sed') return !sedEditsInPlace(args)
   if (head === 'awk') return !awkRunsCode(args, text)
+  if (head === 'hostname') return !hostnameSets(args)
+  if (head === 'less') return !lessWrites(args)
 
   return READ_COMMANDS.has(head)
 }
@@ -82,9 +95,10 @@ export const isReadOnlyCommand = (raw: string): boolean => {
   const command = raw.replace(/\d*>>?\s*\/dev\/null/g, '')
   if (/(^|[^>])>{1,2}(?!&)|\btee\b/.test(command)) return false
 
-  return pieces(command)
-    .filter(part => words(part).length > 0)
-    .every(isReadPart)
+  const parts = pieces(command)
+  if (!parts) return false
+
+  return parts.filter(part => words(part).length > 0).every(isReadPart)
 }
 
 // What a tool call counts as: acting changes things, looking reads them,

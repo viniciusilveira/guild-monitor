@@ -38,7 +38,7 @@ test('gh pr view counts as exploring', async () => {
 test('every added program counts as read-only', async () => {
   const programs = ['cut', 'awk', 'tr', 'nl', 'column', 'basename', 'dirname', 'realpath', 'readlink', 'uname', 'hostname', 'id', 'ps', 'lsof', 'less', 'more']
   expect(programs).toHaveLength(16)
-  for (const program of programs) expect([program, isReadOnlyCommand(`${program} arg`)]).toEqual([program, true])
+  for (const program of programs) expect([program, isReadOnlyCommand(program === 'hostname' ? 'hostname -f' : `${program} arg`)]).toEqual([program, true])
 })
 
 test('gh read subcommands count as read-only', async () => {
@@ -109,6 +109,36 @@ test('separators inside quotes do not split a command', async () => {
 test('separators outside quotes still split a command', async () => {
   for (const command of ["grep 'a|b' f | xargs rm", 'echo "a;b" ; mkdir x']) {
     expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('backslash escaped quotes do not hide a separator', async () => {
+  for (const command of ["echo \\'; rm x; echo \\'", 'echo \\" ; rm x']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('a quote left open makes the command act', async () => {
+  for (const command of ["echo it's; mkdir x", "echo 'a ; rm x", 'echo "a ; rm x']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('balanced quotes and escaped separators still look', async () => {
+  for (const command of ["sed -n '1p;3p' f", 'echo "it\'s ; fine"', "echo 'a ; b' | cat", 'echo a\\;b']) {
+    expect([command, kind(command)]).toEqual([command, 'look'])
+  }
+})
+
+test('awk -E, hostname with a name and less -o all act', async () => {
+  for (const command of ['awk -E prog.awk f', 'hostname newname', 'less -o out f', 'less -O out f', 'less --log-file=out f']) {
+    expect([command, kind(command)]).toEqual([command, 'act'])
+  }
+})
+
+test('hostname alone or with flags and less without log options still look', async () => {
+  for (const command of ['hostname', 'hostname -f', 'less file', 'less -N file']) {
+    expect([command, kind(command)]).toEqual([command, 'look'])
   }
 })
 
