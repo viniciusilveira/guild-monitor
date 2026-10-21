@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { SCENES as DEMO_SCENES } from './demo'
+import { SCENES as DEMO_SCENES, SCHEME_SCENES } from './demo'
 import { METER_SCHEMES, SCHEMES } from './schemes'
 import { COLORS, URGENT_COLOR } from './view'
 
@@ -2443,14 +2443,15 @@ test('compactions C16: the late measurement that arrives by the periodic reading
   const clock = await setup($, on, () => false, () => undefined, toastsStore(toasts))
   await clock.advance(2_100)
   await compact($)
-  expect(toasts).toEqual([])
+  // 12% of stamina is below the band: the low-stamina warning (alerts C-series), and nothing about rest yet.
+  expect(toasts).toEqual(['O Explorador está quase sem fôlego: 12%. /compact recupera'])
 
   contextPercent = 36
   await clock.advance(2_100)
-  await until(() => toasts.length > 0, 'the toast of the periodic reading')
+  await until(() => toasts.length > 1, 'the toast of the periodic reading')
   await clock.advance(2_100)
 
-  expect(toasts).toEqual(['A guilda descansou: ST recuperada de 12% para 64%'])
+  expect(toasts).toEqual(['O Explorador está quase sem fôlego: 12%. /compact recupera', 'A guilda descansou: ST recuperada de 12% para 64%'])
 })
 
 test('compactions C17: the stamina before is the one read before the compaction runs, not one measured during it', { options: { layout: 'bar' } }, async ($, on) => {
@@ -2485,4 +2486,156 @@ test('compactions C18: in a demonstration scene a compaction counts nothing and 
 
   expect(await counterText($)).toBe('bugs 0')
   expect(toasts).toEqual([])
+})
+
+// Alerts: the toasts for HP, MP and stamina running low. `measureAll` is a measurement of the session with the
+// context used (the stamina is 100 minus it) and the rate limits (used percent, so `five(82)` is 18% of MP left).
+const measureAll = ($: Engine, contextUsed: number, rateLimits: Limit[]) =>
+  $.session.measure({ context: { percent: contextUsed }, rateLimits, changed: ['context', 'rateLimits'] } as never)
+
+const ST_15 = 'O Explorador está quase sem fôlego: 15%. /compact recupera'
+
+test('alerts C6 e2e: after a compaction the stamina warns again on the same reading, HP and MP stay quiet', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 85, [five(85), seven(85)])
+  expect(toasts).toHaveLength(3)
+
+  await measureAll($, 85, [five(85), seven(85)])
+  expect(toasts).toHaveLength(3)
+
+  await compact($)
+  await measureAll($, 85, [five(85), seven(85)])
+
+  expect(toasts).toHaveLength(4)
+  expect(toasts[3]).toBe(ST_15)
+})
+
+test('alerts C7 e2e: without rate limits only the stamina alert shows', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 85, [])
+
+  expect(toasts).toEqual([ST_15])
+})
+
+test('alerts C8 e2e: the toasts of HP and MP say the value and the time to the reset', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 30, [seven(82, 3 * 24 * 60 + 5 * 60)])
+  await measureAll($, 30, [five(82, 100)])
+
+  expect(toasts).toEqual(['O Guerreiro está quase sem vida: 18%, reinicia em 3d 5h', 'O Mago está quase sem mana: 18%, reinicia em 1h40'])
+})
+
+test('alerts C10 e2e periodic: with alerts off the periodic reading shows no toast, not even the rest one', { options: { layout: 'bar', alerts: 'off' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  const clock = await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await clock.advance(2_100)
+  await compact($)
+  contextPercent = 36
+  await clock.advance(2_100)
+  await clock.advance(2_100)
+
+  expect(toasts).toEqual([])
+})
+
+test('alerts C10 e2e measure: with alerts off session.measure shows no toast, not even the rest one', { options: { layout: 'bar', alerts: 'off' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 85, [five(85), seven(85)])
+  await compact($)
+  await measureAll($, 36, [five(85), seven(85)])
+
+  expect(toasts).toEqual([])
+})
+
+test('alerts C11 e2e unknown: an unknown alerts value counts as on', { options: { layout: 'bar', alerts: 'talvez' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 30, [five(85)])
+
+  expect(toasts).toEqual(['O Mago está quase sem mana: 15%, reinicia em 5h00'])
+})
+
+test('alerts C11 e2e absent: a missing alerts option counts as on', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 30, [five(85)])
+
+  expect(toasts).toEqual(['O Mago está quase sem mana: 15%, reinicia em 5h00'])
+})
+
+test('alerts C11 e2e periodic: the periodic reading warns by default', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  const clock = await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await clock.advance(2_100)
+  await clock.advance(2_100)
+
+  expect(toasts).toHaveLength(3)
+  expect(toasts[2]).toBe(ST_15)
+})
+
+for (const scene of [...DEMO_SCENES, ...SCHEME_SCENES]) {
+  test(`alerts C12 e2e: the scene ${scene} never warns, and the real session warns once it is back`, { options: { layout: 'bar' } }, async ($, on) => {
+    const toasts: string[] = []
+    nextFast = true
+    nextLimits = [five(85), seven(85)]
+    nextContext = 85
+    await setup($, on, () => false, () => undefined, toastsStore(toasts))
+    await $.command.run({ command: 'guild', args: scene } as never)
+    await measureAll($, 85, [five(85), seven(85)])
+    expect(toasts).toEqual([])
+
+    await $.command.run({ command: 'guild', args: 'off' } as never)
+    await measureAll($, 85, [five(85), seven(85)])
+    expect(toasts).toHaveLength(3)
+  })
+}
+
+test('alerts C13 e2e: the store and the trace carry no warning state and the toasts no path, prompt or command', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: string[] = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async () => ({ value: undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push(JSON.stringify([e.key, e.value]))
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push((e as { text: string }).text)
+
+      return { value: undefined } as never
+    })
+  }
+  nextFast = true
+  nextLimits = [five(92), seven(95)]
+  nextContext = 91
+  await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'segredo-do-prompt', turnId: 't1' } as never)
+  await call($, 'Bash', { command: 'cat /Users/me/segredo/chave.txt' })
+  await call($, 'Edit', { file_path: '/Users/me/segredo/a.ts', old_string: 'a', new_string: 'b' })
+  await measureAll($, 91, [five(92), seven(95)])
+
+  const trace = ((await $.command.run({ command: 'guild', args: 'trace' } as never)) as { text: string }).text
+  expect(toasts).toHaveLength(3)
+  expect(writes.length).toBeGreaterThan(0)
+  expect([...writes, trace].join('\n')).not.toMatch(/fôlego|mana|vida|alert|warned|compact|por um fio|quase sem/)
+  expect(toasts.join('\n')).not.toMatch(/segredo|Users|chave|Bash|Edit|cat /)
 })
