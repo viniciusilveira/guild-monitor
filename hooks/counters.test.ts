@@ -1,10 +1,15 @@
 import { expect, test } from 'claude-code/testing'
 
+import type { ViewModel } from '../types'
 import { counterLine, counterSegments } from './counters'
+import type { Counters } from './counters'
 import { DEFEAT_MS, EXPIRE_MS } from './guild'
 import { createTracker, startTurn, tick, toolFinished } from './tracker'
 import type { Tracker } from './tracker'
 import { emptyGuild } from './xp'
+
+// Only the fields the line reads: the counters and the damage dealt (none here).
+const viewOf = (counters: Counters): ViewModel => ({ counters, damage: { files: 0, lines: 0, commands: 0 } }) as ViewModel
 
 const edit = { tool: 'Edit' }
 const npmTest = { tool: 'Bash', command: 'npm test' }
@@ -76,17 +81,17 @@ test('counters C6: the best combo of 5 does not drop after a failure and two suc
 
 test('counters C8: the line leaves the combo out at 0, 1 and 2', async () => {
   for (const combo of [0, 1, 2]) {
-    expect(counterLine(counterSegments({ combo, best: 2, bugs: 1 }))).toBe('bugs 1')
+    expect(counterLine(counterSegments(viewOf({ combo, best: 2, bugs: 1 })))).toBe('bugs 1')
   }
 })
 
 test('counters C9: the line shows the combo at exactly 3', async () => {
-  expect(counterLine(counterSegments({ combo: 3, best: 3, bugs: 0 }))).toBe('combo x3 · melhor x3 · bugs 0')
-  expect(counterLine(counterSegments({ combo: 7, best: 9, bugs: 3 }))).toBe('combo x7 · melhor x9 · bugs 3')
+  expect(counterLine(counterSegments(viewOf({ combo: 3, best: 3, bugs: 0 })))).toBe('combo x3 · melhor x3 · bugs 0')
+  expect(counterLine(counterSegments(viewOf({ combo: 7, best: 9, bugs: 3 })))).toBe('combo x7 · melhor x9 · bugs 3')
 })
 
 test('counters C15: a segment added to the list shows after the existing ones, joined by a dot', async () => {
-  const segments = [...counterSegments({ combo: 7, best: 9, bugs: 3 }), 'dano 12']
+  const segments = [...counterSegments(viewOf({ combo: 7, best: 9, bugs: 3 })), 'dano 12']
 
   expect(counterLine(segments)).toBe('combo x7 · melhor x9 · bugs 3 · dano 12')
   expect(counterLine(['x'])).toBe('x')

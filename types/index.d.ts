@@ -54,6 +54,8 @@ export type ViewModel = {
   goldPartial: boolean
   // The session's scores, in memory only: operations in a row that worked, the best such run and bugs defeated.
   counters: { combo: number; best: number; bugs: number }
+  // The session's damage dealt, in memory only: distinct files edited, lines written and shell commands run, all that worked.
+  damage: { files: number; lines: number; commands: number }
   // The latest payments of XP, oldest first.
   recent: RecentOp[]
   // The latest call that has not finished, or null when nothing runs.

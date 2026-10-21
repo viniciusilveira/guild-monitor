@@ -2,7 +2,7 @@ export type TaskClass = 'mago' | 'guerreiro' | 'explorador'
 
 // One tool call of a turn, as the hook saw it: the tool, and for Bash its
 // command, for Agent the kind of subagent.
-export type ToolUse = { tool: string; command?: string; subagent?: string; lines?: number }
+export type ToolUse = { tool: string; command?: string; subagent?: string; lines?: number; file?: string }
 
 export type TurnSignals = {
   prompt: string
