@@ -4,6 +4,7 @@ import type { CoreEngineInterface, Register, StateDollar } from 'claude-code'
 import type { ViewModel } from '../types'
 import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
+import { compactionToast, countsAsCompaction } from './compactions'
 import { fileOf } from './damage'
 import { targetOf } from './doing'
 import { chooseFrom, describeChoices, helpText, mergeSaved, requestOf, savedChoice, savedText } from './choices'
@@ -23,9 +24,9 @@ import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import type { TraceEntry } from './trace'
 import { appendTrace, describeTrace, parseTrace, programOf } from './trace'
-import { callEnded, callStarted, completeTurn, costMeasured, createTracker, intervalNow, setPlanMode, startTurn, tick, tokensSpent, toolFinished, toolStarted } from './tracker'
+import { callEnded, callStarted, compacted, completeTurn, costMeasured, createTracker, intervalNow, setPlanMode, staminaMeasured, startTurn, tick, tokensSpent, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
-import { buildView, frameAt, mergeUsage, NAMES, sheetIdFor, usageFrom } from './view'
+import { buildView, frameAt, mergeUsage, NAMES, percentLeft, sheetIdFor, usageFrom } from './view'
 import { emptyGuild, parseGuild } from './xp'
 
 const STORE_KEY = 'guild.v1'
@@ -191,6 +192,15 @@ export const register: Register = (on, options) => {
   const viewOf = (from: Tracker, figures: Usage, now: number, readings: History = history): ViewModel =>
     buildView(from, figures, now, settings, showForecast ? readings : EMPTY_HISTORY)
 
+  // A measurement of the context brings the message of a compaction waiting for it; the toast is not behind an
+  // option yet (`alerts` does not exist), so the call sites below are the one place that would be.
+  const stamina = (contextPercent: number | undefined): string | undefined => {
+    const done = staminaMeasured(tracker, percentLeft(contextPercent))
+    tracker = done.tracker
+
+    return done.announce === undefined ? undefined : compactionToast(done.announce)
+  }
+
   // Only what the engine just reported is a reading: the known figures that `mergeUsage` keeps for a window
   // the engine did not report again would count as readings in which nothing changed.
   const record = (fresh: Usage, now: number): void => {
@@ -238,6 +248,8 @@ export const register: Register = (on, options) => {
           const fresh = usageFrom(await $.session.usage())
           usage = mergeUsage(usage, fresh)
           tracker = costMeasured(tracker, fresh.costUsd, asked)
+          const rested = stamina(fresh.contextPercent)
+          if (rested !== undefined) $.ui.toast(rested)
           record(fresh, now)
         }
 
@@ -433,10 +445,30 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     usage = mergeUsage(usage, usageFrom(e))
     tracker = costMeasured(tracker, usageFrom(e).costUsd, asked)
+    const rested = stamina(usageFrom(e).contextPercent)
+    if (rested !== undefined) $.ui.toast(rested)
     record(usageFrom(e), now)
     await publishView($, viewOf(tracker, usage, now), cache)
 
     return next(e)
+  })
+
+  // The conversation was compacted. The monitor only watches: the compaction's own result goes back as it is.
+  on('session.compact', async ($, e, next) => {
+    // The stamina known before it: a measurement that arrives during the compaction is not yet a recovery.
+    const before = percentLeft(usage.contextPercent)
+    const result = await next(e)
+
+    try {
+      if (scene === undefined && countsAsCompaction({ trigger: e.trigger, agentId: e.agentId, skipped: result.skip !== undefined })) {
+        tracker = compacted(tracker, before)
+        await publishQuietly($, async () => viewOf(tracker, usage, await $.clock.now()), cache)
+      }
+    } catch {
+      cache.signature = ''
+    }
+
+    return result
   })
 
   // The footer's mode labels are the only place the engine says plan mode is on.

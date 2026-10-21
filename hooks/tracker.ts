@@ -3,6 +3,8 @@ import { classify, classOf, DEFAULT_CLASS } from './classify'
 import type { Gold } from './gold'
 import type { Interval } from './gold'
 import { goldMeasured, goldOperation, intervalOf, NO_GOLD } from './gold'
+import type { Announcement, Compactions } from './compactions'
+import { NO_COMPACTIONS, onCompaction, onStamina } from './compactions'
 import type { Counters } from './counters'
 import type { Damage } from './damage'
 import { NO_DAMAGE, onDeed } from './damage'
@@ -45,6 +47,8 @@ export type Tracker = {
   counters: Counters
   // Files, lines and commands that worked in this session; memory only, never stored (no path, only fingerprints).
   damage: Damage
+  // The main agent's compactions in this session and the one waiting for its recovery; memory only, never stored.
+  compactions: Compactions
   lastActivityAt: number
   recent: readonly Entry[]
   // Calls in progress, oldest first: the last one is the most recent not yet finished.
@@ -65,6 +69,7 @@ export const createTracker = (guild: Guild, now: number): Tracker => ({
   guild,
   counters: NO_COUNTERS,
   damage: NO_DAMAGE,
+  compactions: NO_COMPACTIONS,
   lastActivityAt: now,
   recent: [],
   running: [],
@@ -79,6 +84,16 @@ export const tokensSpent = (tracker: Tracker, usage: unknown, isSubagent: boolea
   const tokens = addTurn(tracker.tokens, usage, isSubagent)
 
   return tokens === tracker.tokens ? tracker : { ...tracker, tokens }
+}
+
+// The main agent compacted: `before` is the stamina known until then (percent left; null when none was).
+export const compacted = (tracker: Tracker, before: number | null): Tracker => ({ ...tracker, compactions: onCompaction(tracker.compactions, before) })
+
+// A measurement of the stamina (percent left; null when unknown): it brings the message of a pending compaction.
+export const staminaMeasured = (tracker: Tracker, after: number | null): { tracker: Tracker; announce?: Announcement } => {
+  const done = onStamina(tracker.compactions, after)
+
+  return done.state === tracker.compactions ? { tracker } : { tracker: { ...tracker, compactions: done.state }, announce: done.announce }
 }
 
 // The interval a reading of the cost is about to close: take it when the reading is asked for, before waiting for it.

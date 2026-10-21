@@ -62,6 +62,8 @@ let nextContext: number | undefined = 30
 let contextPercent: number | undefined = 30
 // A test that holds the answer of `session.usage`: set `usageGate`, wait for `usageHeld`, then release it.
 let usageGate: Promise<void> | undefined
+// Why a test makes the engine veto the compaction (`session.compact`'s `skip`); `undefined` lets it happen.
+let compactSkip: string | undefined
 let usageHeld = false
 // A test that moves the time itself (`jump`) instead of letting a fake clock tick through it: `nextFast` before
 // `setup`, then `fakeNow` is what `$.clock.now()` answers. The engine still calls the `clock.every` callback of the
@@ -88,6 +90,7 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   nextContext = 30
   usageGate = undefined
   usageHeld = false
+  compactSkip = undefined
   isFast = nextFast
   nextFast = false
   fakeNow = START
@@ -98,6 +101,7 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
     on('clock.every', async () => ({ value: undefined }) as never)
   }
   mountStore(on)
+  on('session.compact', async () => (compactSkip === undefined ? { messages: [{ role: 'user', text: 'resumo', toolUses: [] }] } : { skip: compactSkip }) as never)
   on('session.measure', async (_$, e) => ({ changed: (e as { changed: string[] }).changed }) as never)
   on('session.usage', async () => {
     if (usageGate !== undefined) {
@@ -2306,4 +2310,117 @@ test('damage C8: no store write, trace entry or toast carries the path of an edi
   const written = [...writes.map(write => JSON.stringify(write)), ...toasts].join('\n')
   expect(written).not.toMatch(/register\.tsx|notes\.md|\/Users\/me|arquivo|linhas|comandos/)
   expect((await panelTexts($)).join('\n')).not.toMatch(/register\.tsx|\/Users\/me\/src\/notes/)
+})
+
+// Compactions: the main agent's, counted on the counters line, and the message that waits for the next measurement.
+const compact = ($: Engine, extra: Record<string, unknown> = {}) => $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'conversa', toolUses: [] }], ...extra } as never)
+
+const measureContext = ($: Engine, percentUsed?: number) =>
+  $.session.measure({ context: { percent: percentUsed }, rateLimits: [], changed: ['context'] } as never)
+
+const toastsStore = (toasts: string[]) => (on: On) => {
+  on('store.get', async () => ({ value: undefined }) as never)
+  on('store.set', async () => ({ value: undefined }) as never)
+  on('ui.toast', async (_$, e) => {
+    toasts.push((e as { text: string }).text)
+
+    return { value: undefined } as never
+  })
+}
+
+test('compactions C2: a compaction with an agentId counts nothing and says nothing', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextContext = 88
+  await start($, on, toastsStore(toasts))
+  await compact($, { agentId: 'sub1' })
+  await measureContext($, 36)
+
+  expect(await counterText($)).toBe('bugs 0')
+  expect(toasts).toEqual([])
+})
+
+test('compactions C4: a new session zeroes the compactions and the panel hides the segment', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await compact($)
+  await compact($, { trigger: 'auto' })
+  expect(await counterText($)).toBe('bugs 0 · 2 compactações')
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
+
+  expect(await counterText($)).toBe('bugs 0')
+})
+
+test('compactions C5 e2e: the message comes with the late measurement, with the stamina before and after', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextContext = 88
+  await start($, on, toastsStore(toasts))
+  await compact($)
+
+  expect(await counterText($)).toBe('bugs 0 · 1 compactação')
+  expect(toasts).toEqual([])
+
+  await measureContext($, 36)
+
+  expect(toasts).toEqual(['A guilda descansou: ST recuperada de 12% para 64%'])
+})
+
+test('compactions C11: the line ends with the compactions in the singular and the plural, and hides them at none', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  expect(await counterText($)).toBe('bugs 0')
+
+  await compact($)
+  expect(await counterText($)).toBe('bugs 0 · 1 compactação')
+
+  await compact($, { trigger: 'auto' })
+  expect(await counterText($)).toBe('bugs 0 · 2 compactações')
+})
+
+test('compactions C12: at 20 columns the line with two compactions fits the width', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await compact($)
+  await compact($, { trigger: 'auto' })
+
+  const line = (await counterText($, 20)) as string
+
+  expect(line).toBe('bugs 0 · 2 compact.')
+  expect(line.length).toBe(19)
+})
+
+test('compactions C14: the store, the trace and the toasts carry no count and no path', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: Array<[string, unknown]> = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async () => ({ value: undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push([e.key, e.value])
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push((e as { text: string }).text)
+
+      return { value: undefined } as never
+    })
+  }
+  nextContext = 88
+  await start($, on, store)
+  await call($, 'Edit', { file_path: '/Users/me/src/notes.md', old_string: 'a', new_string: 'b' })
+  await compact($)
+  await measureContext($, 36)
+
+  expect(toasts).toEqual(['A guilda descansou: ST recuperada de 12% para 64%'])
+  expect(toasts.join('\n')).not.toMatch(/notes|\/Users|compacta/)
+  expect(writes.length).toBeGreaterThan(0)
+  expect(writes.map(write => JSON.stringify(write)).join('\n')).not.toMatch(/compact|descans|notes\.md|\/Users\/me/)
+})
+
+test('compactions C3 e2e: a vetoed compaction, a precompute and a plugin one count nothing', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  compactSkip = 'off'
+  await compact($)
+  compactSkip = undefined
+  await compact($, { trigger: 'precompute' })
+  await compact($, { trigger: 'plugin' })
+
+  expect(await counterText($)).toBe('bugs 0')
 })
