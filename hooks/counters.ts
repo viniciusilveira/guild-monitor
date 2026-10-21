@@ -1,4 +1,5 @@
 import type { ViewModel } from '../types'
+import { compactionSegments } from './compactions'
 import { damageSegments } from './damage'
 
 // The session's scores: the combo (operations in a row that worked), the best combo and the bugs
@@ -28,21 +29,22 @@ export const onOperation = (counters: Counters, operation: Operation): Counters 
   }
 }
 
-// The pieces of the counters line, in order. It takes the whole view, so a later slice (compactions) adds its
-// field to the view and its segment here without changing the signature; the line only joins what it is given.
-export const counterSegments = (view: ViewModel, shortDamage = false): string[] => [
+// The pieces of the counters line, in order. It takes the whole view, so a new counter adds its field to the view
+// and its segment here without changing the signature; the line only joins what it is given.
+export const counterSegments = (view: ViewModel, short = false): string[] => [
   ...(view.counters.combo >= COMBO_MIN ? [`combo x${view.counters.combo}`] : []),
   ...(view.counters.best >= COMBO_MIN ? [`melhor x${view.counters.best}`] : []),
   `bugs ${view.counters.bugs}`,
-  ...damageSegments(view.damage, shortDamage),
+  ...damageSegments(view.damage, short),
+  ...compactionSegments(view.compactions, short),
 ]
 
 export const counterLine = (segments: readonly string[]): string => segments.join(' · ')
 
-// The line fitted to the width, like the gold, token and forecast lines: the damage in full words, else in the
-// short form, else only the damage segments that fit, in order; combo, best combo and bugs always stay.
+// The line fitted to the width, like the gold, token and forecast lines: the damage and the compactions in full
+// words, else in the short form, else only the segments that fit, in order; combo, best combo and bugs always stay.
 export const fitCounterLine = (view: ViewModel, width: number): string => {
-  const base = counterSegments({ ...view, damage: { files: 0, lines: 0, commands: 0 } })
+  const base = counterSegments({ ...view, damage: { files: 0, lines: 0, commands: 0 }, compactions: 0 })
   const full = counterLine(counterSegments(view))
 
   if (full.length <= width) return full

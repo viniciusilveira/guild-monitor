@@ -56,7 +56,7 @@ export const mergeUsage = (known: Usage, fresh: Usage): Usage => {
   }
 }
 
-const percentLeft = (used: number | undefined): number | null =>
+export const percentLeft = (used: number | undefined): number | null =>
   used === undefined ? null : Math.max(0, Math.min(100, Math.round(100 - used)))
 
 const wholeSeconds = (ms: number): number => Math.max(0, Math.floor(ms / 1000))
@@ -110,6 +110,7 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     gold: goldLines(tracker.gold),
     goldPartial: tracker.gold.base > 0,
     damage: damageView(tracker.damage),
+    compactions: tracker.compactions.count,
     counters: { combo: tracker.counters.combo, best: tracker.counters.best, bugs: tracker.counters.bugs },
     recent: [...tracker.recent],
     doing: doingOf(tracker.running),

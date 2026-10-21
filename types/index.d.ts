@@ -56,6 +56,8 @@ export type ViewModel = {
   counters: { combo: number; best: number; bugs: number }
   // The session's damage dealt, in memory only: distinct files edited, lines written and shell commands run, all that worked.
   damage: { files: number; lines: number; commands: number }
+  // The session's compactions by the main agent, in memory only.
+  compactions: number
   // The latest payments of XP, oldest first.
   recent: RecentOp[]
   // The latest call that has not finished, or null when nothing runs.
