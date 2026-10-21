@@ -30,11 +30,31 @@ export const onOperation = (counters: Counters, operation: Operation): Counters 
 
 // The pieces of the counters line, in order. It takes the whole view, so a later slice (compactions) adds its
 // field to the view and its segment here without changing the signature; the line only joins what it is given.
-export const counterSegments = (view: ViewModel): string[] => [
+export const counterSegments = (view: ViewModel, shortDamage = false): string[] => [
   ...(view.counters.combo >= COMBO_MIN ? [`combo x${view.counters.combo}`] : []),
   ...(view.counters.best >= COMBO_MIN ? [`melhor x${view.counters.best}`] : []),
   `bugs ${view.counters.bugs}`,
-  ...damageSegments(view.damage),
+  ...damageSegments(view.damage, shortDamage),
 ]
 
 export const counterLine = (segments: readonly string[]): string => segments.join(' · ')
+
+// The line fitted to the width, like the gold, token and forecast lines: the damage in full words, else in the
+// short form, else only the damage segments that fit, in order; combo, best combo and bugs always stay.
+export const fitCounterLine = (view: ViewModel, width: number): string => {
+  const base = counterSegments({ ...view, damage: { files: 0, lines: 0, commands: 0 } })
+  const full = counterLine(counterSegments(view))
+
+  if (full.length <= width) return full
+
+  const short = counterSegments(view, true)
+  const kept = short.slice(base.length)
+  let line = counterLine(short)
+
+  for (let count = kept.length; line.length > width && count > 0; ) {
+    count -= 1
+    line = counterLine([...base, ...kept.slice(0, count)])
+  }
+
+  return line
+}

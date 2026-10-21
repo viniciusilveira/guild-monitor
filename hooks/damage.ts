@@ -55,8 +55,11 @@ export const damageView = (damage: Damage): DamageView => ({ files: damage.files
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
-// `3 arquivos`, `142 linhas`, `8 comandos`: none of them while there is no damage.
-export const damageSegments = (damage: DamageView): string[] =>
+// `3 arquivos`, `142 linhas`, `8 comandos`: none of them while there is no damage. `short` gives `3 arq`, `142 lin`,
+// `8 cmd` for a line that does not have the room for the full words.
+export const damageSegments = (damage: DamageView, short = false): string[] =>
   damage.files === 0 && damage.lines === 0 && damage.commands === 0
     ? []
-    : [plural(damage.files, 'arquivo', 'arquivos'), plural(damage.lines, 'linha', 'linhas'), plural(damage.commands, 'comando', 'comandos')]
+    : short
+      ? [`${damage.files} arq`, `${damage.lines} lin`, `${damage.commands} cmd`]
+      : [plural(damage.files, 'arquivo', 'arquivos'), plural(damage.lines, 'linha', 'linhas'), plural(damage.commands, 'comando', 'comandos')]

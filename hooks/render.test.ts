@@ -803,7 +803,7 @@ const panelTexts = async ($: Engine, columns = 60) => {
 
 // The combo, best combo and bugs of the counters line: the damage dealt after them has its own tests (`damage C*`).
 const countersLine = async ($: Engine, columns = 60) =>
-  (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+( · .*)?$/.test(text))?.replace(/( · \d+ (arquivos?|linhas?|comandos?))+$/, '')
+  (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+( · .*)?$/.test(text))?.replace(/( · \d+ (arquivos?|linhas?|comandos?|arq|lin|cmd))+$/, '')
 
 const edits = async ($: Engine, n: number) => {
   for (let i = 0; i < n; i += 1) await call($, 'Edit', EDIT)
@@ -2196,7 +2196,7 @@ test('meters C24: during a scheme scene the answer says the saved scheme waits f
 })
 
 // Damage dealt: files, lines and commands on the counters line.
-const counterText = async ($: Engine, columns = 60) => (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+( · .*)?$/.test(text))
+const counterText = async ($: Engine, columns = 80) => (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+( · .*)?$/.test(text))
 
 const lines = (n: number) => Array.from({ length: n }, () => 'x').join('\n')
 
@@ -2238,6 +2238,35 @@ test('damage C6 plural: one file, one line and one command are written in the si
   await call($, 'Bash', { command: 'npm test' })
 
   expect(await counterText($)).toBe('bugs 0 · 1 arquivo · 1 linha · 1 comando')
+})
+
+// Three files' worth of damage, then a failing command: the combo is back to 0, so the line is `bugs 0` and the damage.
+const dealDamage = async ($: Engine) => {
+  await call($, 'Edit', { file_path: '/p/a.ts', old_string: 'a', new_string: 'b' })
+  await call($, 'Write', { file_path: '/p/b.ts', content: lines(100) })
+  await call($, 'Write', { file_path: '/p/c.ts', content: lines(41) })
+  for (let i = 0; i < 8; i += 1) await call($, 'Bash', { command: 'npm test' })
+  failBash = true
+  await call($, 'Bash', { command: 'npm test' })
+  failBash = false
+}
+
+test('damage C11: at 20 columns the counters line fits the width, and a comfortable width keeps the full words', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await dealDamage($)
+
+  for (const columns of [20, 24, 30, 40, 50, 60]) {
+    const line = (await counterText($, columns)) as string
+
+    expect(line.length).toBeLessThanOrEqual(Math.max(columns, 'melhor x11 · bugs 0'.length))
+  }
+
+  expect(await counterText($, 20)).toBe('melhor x11 · bugs 0')
+  expect(await counterText($, 24)).toBe('melhor x11 · bugs 0')
+  expect(await counterText($, 30)).toBe('melhor x11 · bugs 0 · 3 arq')
+  expect(await counterText($, 40)).toBe('melhor x11 · bugs 0 · 3 arq · 142 lin')
+  expect(await counterText($, 50)).toBe('melhor x11 · bugs 0 · 3 arq · 142 lin · 8 cmd')
+  expect(await counterText($, 60)).toBe('melhor x11 · bugs 0 · 3 arquivos · 142 linhas · 8 comandos')
 })
 
 test('damage C7: a new session zeroes the damage and the panel hides it', { options: { layout: 'bar' } }, async ($, on) => {
