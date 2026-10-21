@@ -193,7 +193,8 @@ export const register: Register = (on, options) => {
     buildView(from, figures, now, settings, showForecast ? readings : EMPTY_HISTORY)
 
   // A measurement of the context brings the message of a compaction waiting for it; the toast is not behind an
-  // option yet (`alerts` does not exist), so the call sites below are the one place that would be.
+  // option yet (`alerts` does not exist). The #19 wraps both places that call this and toast: the periodic
+  // reading of `session.usage` and the `session.measure` hook.
   const stamina = (contextPercent: number | undefined): string | undefined => {
     const done = staminaMeasured(tracker, percentLeft(contextPercent))
     tracker = done.tracker

@@ -64,6 +64,9 @@ let contextPercent: number | undefined = 30
 let usageGate: Promise<void> | undefined
 // Why a test makes the engine veto the compaction (`session.compact`'s `skip`); `undefined` lets it happen.
 let compactSkip: string | undefined
+// A test that holds the compaction beneath the plugin: set `compactGate`, wait for `compactHeld`, then release it.
+let compactGate: Promise<void> | undefined
+let compactHeld = false
 let usageHeld = false
 // A test that moves the time itself (`jump`) instead of letting a fake clock tick through it: `nextFast` before
 // `setup`, then `fakeNow` is what `$.clock.now()` answers. The engine still calls the `clock.every` callback of the
@@ -91,6 +94,8 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
   usageGate = undefined
   usageHeld = false
   compactSkip = undefined
+  compactGate = undefined
+  compactHeld = false
   isFast = nextFast
   nextFast = false
   fakeNow = START
@@ -101,7 +106,14 @@ const setup = async ($: Engine, on: On, fails: Fail = () => false, says: Says = 
     on('clock.every', async () => ({ value: undefined }) as never)
   }
   mountStore(on)
-  on('session.compact', async () => (compactSkip === undefined ? { messages: [{ role: 'user', text: 'resumo', toolUses: [] }] } : { skip: compactSkip }) as never)
+  on('session.compact', async () => {
+    if (compactGate !== undefined) {
+      compactHeld = true
+      await compactGate
+    }
+
+    return (compactSkip === undefined ? { messages: [{ role: 'user', text: 'resumo', toolUses: [] }] } : { skip: compactSkip }) as never
+  })
   on('session.measure', async (_$, e) => ({ changed: (e as { changed: string[] }).changed }) as never)
   on('session.usage', async () => {
     if (usageGate !== undefined) {
@@ -2423,4 +2435,54 @@ test('compactions C3 e2e: a vetoed compaction, a precompute and a plugin one cou
   await compact($, { trigger: 'plugin' })
 
   expect(await counterText($)).toBe('bugs 0')
+})
+
+test('compactions C16: the late measurement that arrives by the periodic reading brings the exact message, once', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextContext = 88
+  const clock = await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await clock.advance(2_100)
+  await compact($)
+  expect(toasts).toEqual([])
+
+  contextPercent = 36
+  await clock.advance(2_100)
+  await until(() => toasts.length > 0, 'the toast of the periodic reading')
+  await clock.advance(2_100)
+
+  expect(toasts).toEqual(['A guilda descansou: ST recuperada de 12% para 64%'])
+})
+
+test('compactions C17: the stamina before is the one read before the compaction runs, not one measured during it', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextContext = 88
+  await start($, on, toastsStore(toasts))
+
+  let release = () => {}
+  compactGate = new Promise<void>(resolve => (release = resolve))
+  const running = compact($)
+  await until(() => compactHeld, 'the compaction to be held')
+  await measureContext($, 36)
+  expect(toasts).toEqual([])
+
+  release()
+  await running
+  await measureContext($, 36)
+
+  expect(await counterText($)).toBe('bugs 0 · 1 compactação')
+  expect(toasts).toEqual(['A guilda descansou: ST recuperada de 12% para 64%'])
+})
+
+test('compactions C18: in a demonstration scene a compaction counts nothing and says nothing', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextContext = 88
+  await start($, on, toastsStore(toasts))
+  await $.command.run({ command: 'guild', args: 'mago' } as never)
+  await compact($)
+  await measureContext($, 36)
+  await $.command.run({ command: 'guild', args: 'off' } as never)
+  await measureContext($, 30)
+
+  expect(await counterText($)).toBe('bugs 0')
+  expect(toasts).toEqual([])
 })
