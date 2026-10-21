@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { SCENES as DEMO_SCENES } from './demo'
+import { SCENES as DEMO_SCENES, SCHEME_SCENES } from './demo'
 import { METER_SCHEMES, SCHEMES } from './schemes'
 import { COLORS, URGENT_COLOR } from './view'
 
@@ -2443,14 +2443,15 @@ test('compactions C16: the late measurement that arrives by the periodic reading
   const clock = await setup($, on, () => false, () => undefined, toastsStore(toasts))
   await clock.advance(2_100)
   await compact($)
-  expect(toasts).toEqual([])
+  // 12% of stamina is below the band: the low-stamina warning (alerts C-series), and nothing about rest yet.
+  expect(toasts).toEqual(['O Explorador está quase sem fôlego: 12%. /compact recupera'])
 
   contextPercent = 36
   await clock.advance(2_100)
-  await until(() => toasts.length > 0, 'the toast of the periodic reading')
+  await until(() => toasts.length > 1, 'the toast of the periodic reading')
   await clock.advance(2_100)
 
-  expect(toasts).toEqual(['A guilda descansou: ST recuperada de 12% para 64%'])
+  expect(toasts).toEqual(['O Explorador está quase sem fôlego: 12%. /compact recupera', 'A guilda descansou: ST recuperada de 12% para 64%'])
 })
 
 test('compactions C17: the stamina before is the one read before the compaction runs, not one measured during it', { options: { layout: 'bar' } }, async ($, on) => {
@@ -2485,4 +2486,288 @@ test('compactions C18: in a demonstration scene a compaction counts nothing and 
 
   expect(await counterText($)).toBe('bugs 0')
   expect(toasts).toEqual([])
+})
+
+// Alerts: the toasts for HP, MP and stamina running low. `measureAll` is a measurement of the session with the
+// context used (the stamina is 100 minus it) and the rate limits (used percent, so `five(82)` is 18% of MP left).
+const measureAll = ($: Engine, contextUsed: number, rateLimits: Limit[]) =>
+  $.session.measure({ context: { percent: contextUsed }, rateLimits, changed: ['context', 'rateLimits'] } as never)
+
+const ST_15 = 'O Explorador está quase sem fôlego: 15%. /compact recupera'
+
+// The periodic reading of the engine's session answers `contextPercent`: a test that moves the stamina moves both.
+const feedContext = async ($: Engine, used: number, rateLimits: Limit[] = []) => {
+  contextPercent = used
+  await measureAll($, used, rateLimits)
+}
+
+test('alerts C6 e2e: a compaction that recovers the stamina re-arms it, HP and MP stay quiet', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 85, [five(85), seven(85)])
+  expect(toasts).toHaveLength(3)
+
+  await measureAll($, 85, [five(85), seven(85)])
+  expect(toasts).toHaveLength(3)
+
+  // Compacted, and the stamina rises from 15% to 18%: still below the band, so only the re-arm lets it warn.
+  await compact($)
+  await feedContext($, 82, [five(85), seven(85)])
+
+  expect(toasts).toHaveLength(5)
+  expect(toasts[3]).toBe('A guilda descansou: ST recuperada de 15% para 18%')
+  expect(toasts[4]).toBe('O Explorador está quase sem fôlego: 18%. /compact recupera')
+})
+
+test('alerts C6 e2e stale: the old reading right after a compaction does not warn again, the recovery rests and re-arms, a new fall warns', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 88
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await feedContext($, 88)
+  expect(toasts).toEqual(['O Explorador está quase sem fôlego: 12%. /compact recupera'])
+
+  await compact($)
+  await feedContext($, 88)
+  expect(toasts).toHaveLength(1)
+
+  await feedContext($, 36)
+  expect(toasts).toHaveLength(2)
+  expect(toasts[1]).toBe('A guilda descansou: ST recuperada de 12% para 64%')
+
+  await feedContext($, 85)
+  expect(toasts).toHaveLength(3)
+  expect(toasts[2]).toBe(ST_15)
+})
+
+test('alerts C6 e2e bands: warned at 9%, a compaction that recovers and a new fall to 9% warn the band 10 text again', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 91
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await feedContext($, 91)
+  await compact($)
+  await feedContext($, 36)
+  await feedContext($, 91)
+
+  const text = 'O Explorador está com o fôlego por um fio: 9%. /compact recupera'
+  expect(toasts).toEqual([text, 'A guilda descansou: ST recuperada de 9% para 64%', text])
+})
+
+test('alerts C6 e2e lower: a compaction whose measurement does not rise does not re-arm', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await feedContext($, 85)
+  expect(toasts).toEqual([ST_15])
+
+  await compact($)
+  // 14% is lower than the 15% before: the compaction closes without a message, and nothing warns again.
+  await feedContext($, 86)
+  await feedContext($, 86)
+  await feedContext($, 85)
+
+  expect(toasts).toEqual([ST_15])
+})
+
+test('alerts C7 e2e: without rate limits only the stamina alert shows', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 85, [])
+
+  expect(toasts).toEqual([ST_15])
+})
+
+test('alerts C8 e2e: the toasts of HP and MP say the value and the time to the reset', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 30, [seven(82, 3 * 24 * 60 + 5 * 60)])
+  await measureAll($, 30, [five(82, 100)])
+
+  expect(toasts).toEqual(['O Guerreiro está quase sem vida: 18%, reinicia em 3d 5h', 'O Mago está quase sem mana: 18%, reinicia em 1h40'])
+})
+
+test('alerts C10 e2e periodic: with alerts off the periodic reading shows no toast, not even the rest one', { options: { layout: 'bar', alerts: 'off' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  const clock = await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await clock.advance(2_100)
+  await compact($)
+  contextPercent = 36
+  await clock.advance(2_100)
+  await clock.advance(2_100)
+
+  expect(toasts).toEqual([])
+})
+
+test('alerts C10 e2e measure: with alerts off session.measure shows no toast, not even the rest one', { options: { layout: 'bar', alerts: 'off' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 85, [five(85), seven(85)])
+  await compact($)
+  await measureAll($, 36, [five(85), seven(85)])
+
+  expect(toasts).toEqual([])
+})
+
+test('alerts C11 e2e unknown: an unknown alerts value counts as on', { options: { layout: 'bar', alerts: 'talvez' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 30, [five(85)])
+
+  expect(toasts).toEqual(['O Mago está quase sem mana: 15%, reinicia em 5h00'])
+})
+
+test('alerts C11 e2e absent: a missing alerts option counts as on', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await measureAll($, 30, [five(85)])
+
+  expect(toasts).toEqual(['O Mago está quase sem mana: 15%, reinicia em 5h00'])
+})
+
+test('alerts C11 e2e periodic: the periodic reading warns by default', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextLimits = [five(85), seven(85)]
+  nextContext = 85
+  const clock = await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await clock.advance(2_100)
+  await clock.advance(2_100)
+
+  expect(toasts).toHaveLength(3)
+  expect(toasts[2]).toBe(ST_15)
+})
+
+for (const scene of [...DEMO_SCENES, ...SCHEME_SCENES]) {
+  test(`alerts C12 e2e: the scene ${scene} never warns, and the real session warns once it is back`, { options: { layout: 'bar' } }, async ($, on) => {
+    const toasts: string[] = []
+    nextFast = true
+    nextLimits = [five(85), seven(85)]
+    nextContext = 85
+    await setup($, on, () => false, () => undefined, toastsStore(toasts))
+    await $.command.run({ command: 'guild', args: scene } as never)
+    await measureAll($, 85, [five(85), seven(85)])
+    expect(toasts).toEqual([])
+
+    await $.command.run({ command: 'guild', args: 'off' } as never)
+    await measureAll($, 85, [five(85), seven(85)])
+    expect(toasts).toHaveLength(3)
+  })
+}
+
+// The window of a meter turning over, through the engine: the reset time travels from the session figures to the detector.
+const windowCase = (name: string, meter: 'hp' | 'mp') => {
+  const made = (used: number, minutes: number): Limit => (meter === 'hp' ? seven(used, minutes) : five(used, minutes))
+  const base = meter === 'hp' ? 6 * 24 * 60 : 300
+  const word = meter === 'hp' ? 'vida' : 'mana'
+
+  test(`alerts C4 e2e ${name}: the same reading does not repeat, a window that resets by 5 minutes or more warns again, one by less does not`, { options: { layout: 'bar' } }, async ($, on) => {
+    const toasts: string[] = []
+    nextFast = true
+    await setup($, on, () => false, () => undefined, toastsStore(toasts))
+    await measureAll($, 30, [made(85, base)])
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]).toContain(`quase sem ${word}: 15%`)
+
+    await measureAll($, 30, [made(85, base)])
+    expect(toasts).toHaveLength(1)
+
+    // The reset moves 4 minutes: still the same window.
+    await measureAll($, 30, [made(85, base + 4)])
+    expect(toasts).toHaveLength(1)
+
+    // The reset moves 10 minutes: a new window, and the same 15% warns again.
+    await measureAll($, 30, [made(85, base + 10)])
+    expect(toasts).toHaveLength(2)
+    expect(toasts[1]).toContain(`quase sem ${word}: 15%`)
+
+    await measureAll($, 30, [made(85, base + 10)])
+    expect(toasts).toHaveLength(2)
+  })
+}
+
+windowCase('hp', 'hp')
+windowCase('mp', 'mp')
+
+// What the plugin wrote before this feature, key by key: any new key, field or kind of value written after a session
+// that warned fails here, whatever its name.
+const STORE_KEYS = ['guild.v1', 'guild.trace.v1']
+const GUILD_FIELDS = ['mago', 'guerreiro', 'explorador', 'xp']
+const TRACE_FIELDS = ['at', 'what', 'tool', 'program', 'kind', 'shown', 'paid', 'planMode', 'isError', 'rejected']
+const TRACE_TOOLS = ['início (palpite do prompt)', 'Bash', 'Edit']
+
+const fieldsOf = (value: unknown): string[] =>
+  typeof value !== 'object' || value === null ? [] : Object.entries(value).flatMap(([key, inner]) => [key, ...fieldsOf(inner)])
+
+test('alerts C13 e2e: after warnings, a re-arm and a compaction the store and the trace hold exactly what they held before', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: Array<[string, unknown]> = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async () => ({ value: undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push([e.key, JSON.parse(JSON.stringify(e.value))])
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push((e as { text: string }).text)
+
+      return { value: undefined } as never
+    })
+  }
+  nextFast = true
+  nextLimits = [five(92), seven(95)]
+  nextContext = 91
+  await setup($, on, () => false, () => undefined, store)
+  await $.turn.start({ text: 'segredo-do-prompt', turnId: 't1' } as never)
+  await call($, 'Bash', { command: 'cat /Users/me/segredo/chave.txt' })
+  await call($, 'Edit', { file_path: '/Users/me/segredo/a.ts', old_string: 'a', new_string: 'b' })
+  await measureAll($, 91, [five(92), seven(95)])
+  expect(toasts).toHaveLength(3)
+
+  // Re-armed by recovering, warned again, then a compaction and the stamina warned a third time.
+  nextLimits = [five(10), seven(10)]
+  nextContext = 20
+  await measureAll($, 20, [five(10), seven(10)])
+  nextLimits = [five(92), seven(95)]
+  nextContext = 91
+  await measureAll($, 91, [five(92), seven(95)])
+  await compact($)
+  await measureAll($, 20, [five(92), seven(95)])
+  await measureAll($, 91, [five(92), seven(95)])
+  expect(toasts.length).toBeGreaterThanOrEqual(8)
+  await call($, 'Edit', { file_path: '/Users/me/segredo/a.ts', old_string: 'b', new_string: 'c' })
+
+  expect(writes.length).toBeGreaterThan(0)
+  expect([...new Set(writes.map(([key]) => key))].sort()).toEqual([...STORE_KEYS].sort())
+
+  const allowed = new Set([...GUILD_FIELDS, ...TRACE_FIELDS])
+  for (const [key, value] of writes) {
+    expect(fieldsOf(value).filter(field => !allowed.has(field) && !/^\d+$/.test(field))).toEqual([])
+    if (key === 'guild.v1') expect(Object.keys(value as object).sort()).toEqual(['explorador', 'guerreiro', 'mago'])
+    if (key === 'guild.trace.v1') {
+      for (const entry of value as Array<Record<string, unknown>>) {
+        expect(['turn', 'tool', 'mode']).toContain(entry.what)
+        expect(TRACE_TOOLS).toContain(entry.tool)
+        expect(Object.keys(entry).filter(field => !TRACE_FIELDS.includes(field))).toEqual([])
+      }
+    }
+  }
+
+  const trace = ((await $.command.run({ command: 'guild', args: 'trace' } as never)) as { text: string }).text
+  expect(trace).not.toMatch(/segredo|Users/)
+  expect(toasts.join('\n')).not.toMatch(/segredo|Users|chave|Bash|Edit|cat /)
 })

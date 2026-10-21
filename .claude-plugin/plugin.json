@@ -75,6 +75,16 @@
         "on",
         "off"
       ]
+    },
+    "alerts": {
+      "type": "string",
+      "title": "Avisos da guilda",
+      "description": "on: avisa em toast quando HP, MP ou stamina caem abaixo de 20% e de 10% e quando a compactação recupera a stamina; off: nenhum toast",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
     }
   }
 }

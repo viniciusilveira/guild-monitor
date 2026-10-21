@@ -3,6 +3,9 @@ import { classify, classOf, DEFAULT_CLASS } from './classify'
 import type { Gold } from './gold'
 import type { Interval } from './gold'
 import { goldMeasured, goldOperation, intervalOf, NO_GOLD } from './gold'
+import type { Alerts } from './alerts'
+import { crossing, METERS, NO_ALERTS, rearm } from './alerts'
+import type { Band, MeterId, Reading } from './alerts'
 import type { Announcement, Compactions } from './compactions'
 import { NO_COMPACTIONS, onCompaction, onStamina } from './compactions'
 import type { Counters } from './counters'
@@ -49,6 +52,8 @@ export type Tracker = {
   damage: Damage
   // The main agent's compactions in this session and the one waiting for its recovery; memory only, never stored.
   compactions: Compactions
+  // The bands of HP, MP and stamina already warned in this cycle; memory only, never stored (a restart may warn again).
+  alerts: Alerts
   lastActivityAt: number
   recent: readonly Entry[]
   // Calls in progress, oldest first: the last one is the most recent not yet finished.
@@ -70,6 +75,7 @@ export const createTracker = (guild: Guild, now: number): Tracker => ({
   counters: NO_COUNTERS,
   damage: NO_DAMAGE,
   compactions: NO_COMPACTIONS,
+  alerts: NO_ALERTS,
   lastActivityAt: now,
   recent: [],
   running: [],
@@ -89,11 +95,32 @@ export const tokensSpent = (tracker: Tracker, usage: unknown, isSubagent: boolea
 // The main agent compacted: `before` is the stamina known until then (percent left; null when none was).
 export const compacted = (tracker: Tracker, before: number | null): Tracker => ({ ...tracker, compactions: onCompaction(tracker.compactions, before) })
 
+export type Fire = { meter: MeterId; band: Band; value: number }
+
+// A reading of the three meters (percent left; null where the engine has none): the warnings that fire now.
+export const metersMeasured = (tracker: Tracker, readings: Record<MeterId, Reading>): { tracker: Tracker; fires: Fire[] } => {
+  const fires: Fire[] = []
+  const alerts = { ...tracker.alerts }
+
+  for (const meter of METERS) {
+    const done = crossing(alerts[meter], readings[meter])
+    alerts[meter] = done.state
+    if (done.fire !== undefined && readings[meter].value !== null) fires.push({ meter, band: done.fire, value: readings[meter].value })
+  }
+
+  return { tracker: { ...tracker, alerts }, fires }
+}
+
 // A measurement of the stamina (percent left; null when unknown): it brings the message of a pending compaction.
+// The stamina warnings are armed again only when the compaction is seen to have recovered it (the message): a reading
+// that is still the old one, or lower, or missing leaves them as they were.
 export const staminaMeasured = (tracker: Tracker, after: number | null): { tracker: Tracker; announce?: Announcement } => {
   const done = onStamina(tracker.compactions, after)
+  if (done.state === tracker.compactions) return { tracker }
 
-  return done.state === tracker.compactions ? { tracker } : { tracker: { ...tracker, compactions: done.state }, announce: done.announce }
+  const next = { ...tracker, compactions: done.state }
+
+  return done.announce === undefined ? { tracker: next } : { tracker: { ...next, alerts: { ...next.alerts, st: rearm(next.alerts.st) } }, announce: done.announce }
 }
 
 // The interval a reading of the cost is about to close: take it when the reading is asked for, before waiting for it.

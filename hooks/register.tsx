@@ -4,6 +4,7 @@ import type { CoreEngineInterface, Register, StateDollar } from 'claude-code'
 import type { ViewModel } from '../types'
 import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
+import { alertsOn, alertText, resetText } from './alerts'
 import { compactionToast, countsAsCompaction } from './compactions'
 import { fileOf } from './damage'
 import { targetOf } from './doing'
@@ -24,7 +25,7 @@ import { FRAME_SIZE, MINI_SIZE, PALETTE, SHEETS } from './sprites.generated'
 import type { Gain, Tracker } from './tracker'
 import type { TraceEntry } from './trace'
 import { appendTrace, describeTrace, parseTrace, programOf } from './trace'
-import { callEnded, callStarted, compacted, completeTurn, costMeasured, createTracker, intervalNow, setPlanMode, staminaMeasured, startTurn, tick, tokensSpent, toolFinished, toolStarted } from './tracker'
+import { callEnded, callStarted, compacted, completeTurn, costMeasured, createTracker, intervalNow, metersMeasured, setPlanMode, staminaMeasured, startTurn, tick, tokensSpent, toolFinished, toolStarted } from './tracker'
 import type { Usage } from './view'
 import { buildView, frameAt, mergeUsage, NAMES, percentLeft, sheetIdFor, usageFrom } from './view'
 import { emptyGuild, parseGuild } from './xp'
@@ -163,6 +164,9 @@ export const register: Register = (on, options) => {
   const bandSize = options.bandSize === 'compact' ? 'compact' : 'full'
   // The forecast of the windows: on unless the person turned it off (anything else counts as on).
   const showForecast = options.showForecast !== 'off'
+  // The toasts of the guild (a meter running low, the rest after a compaction): on unless the person turned them off
+  // (anything else counts as on).
+  const showAlerts = alertsOn(options.alerts)
   const layoutMode = options.layout === 'bar' || options.layout === 'panel' ? options.layout : 'auto'
   // A demo scene shows made-up figures and ignores the session.
   let scene = sceneOf(options.demo)
@@ -192,15 +196,35 @@ export const register: Register = (on, options) => {
   const viewOf = (from: Tracker, figures: Usage, now: number, readings: History = history): ViewModel =>
     buildView(from, figures, now, settings, showForecast ? readings : EMPTY_HISTORY)
 
-  // A measurement of the context brings the message of a compaction waiting for it; the toast is not behind an
-  // option yet (`alerts` does not exist). The #19 wraps both places that call this and toast: the periodic
-  // reading of `session.usage` and the `session.measure` hook.
+  // A measurement of the context brings the message of a compaction waiting for it. What is said with it is behind
+  // `alerts` (see `speak`): this keeps following the compaction whether or not it is shown.
   const stamina = (contextPercent: number | undefined): string | undefined => {
     const done = staminaMeasured(tracker, percentLeft(contextPercent))
     tracker = done.tracker
 
     return done.announce === undefined ? undefined : compactionToast(done.announce)
   }
+
+  // The warnings that a measurement of the three meters brings: HP, MP and stamina below a band. None in a demonstration
+  // scene (which shows made-up figures) and none for a figure the engine does not have.
+  const meterWarnings = (now: number): string[] => {
+    if (scene !== undefined) return []
+
+    const week = usage.rateLimits.find(limit => limit.kind === 'seven_day')
+    const hours = usage.rateLimits.find(limit => limit.kind === 'five_hour')
+    const done = metersMeasured(tracker, {
+      hp: { value: percentLeft(week?.percentUsed), resetsAt: week?.resetsAt },
+      mp: { value: percentLeft(hours?.percentUsed), resetsAt: hours?.resetsAt },
+      st: { value: percentLeft(usage.contextPercent) },
+    })
+    tracker = done.tracker
+
+    return done.fires.map(fire => alertText(fire.meter, fire.band, fire.value, resetText((fire.meter === 'hp' ? week : fire.meter === 'mp' ? hours : undefined)?.resetsAt ?? null, now)))
+  }
+
+  // What a measurement has to say, to be toasted: the rest message of a compaction and then the warnings. `alerts` off
+  // says nothing.
+  const speak = (rested: string | undefined, now: number): string[] => (showAlerts ? [...(rested === undefined ? [] : [rested]), ...meterWarnings(now)] : [])
 
   // Only what the engine just reported is a reading: the known figures that `mergeUsage` keeps for a window
   // the engine did not report again would count as readings in which nothing changed.
@@ -249,8 +273,7 @@ export const register: Register = (on, options) => {
           const fresh = usageFrom(await $.session.usage())
           usage = mergeUsage(usage, fresh)
           tracker = costMeasured(tracker, fresh.costUsd, asked)
-          const rested = stamina(fresh.contextPercent)
-          if (rested !== undefined) $.ui.toast(rested)
+          for (const text of speak(stamina(fresh.contextPercent), now)) $.ui.toast(text)
           record(fresh, now)
         }
 
@@ -446,8 +469,7 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     usage = mergeUsage(usage, usageFrom(e))
     tracker = costMeasured(tracker, usageFrom(e).costUsd, asked)
-    const rested = stamina(usageFrom(e).contextPercent)
-    if (rested !== undefined) $.ui.toast(rested)
+    for (const text of speak(stamina(usageFrom(e).contextPercent), now)) $.ui.toast(text)
     record(usageFrom(e), now)
     await publishView($, viewOf(tracker, usage, now), cache)
 

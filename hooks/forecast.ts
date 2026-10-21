@@ -70,7 +70,7 @@ const instantOf = (resetsAt: string | null): number | null => {
   return Number.isNaN(at) ? null : at
 }
 
-const sameWindow = (known: string | null, fresh: string | null): boolean => {
+export const sameWindow = (known: string | null, fresh: string | null): boolean => {
   if (known === null || fresh === null) return known === fresh
 
   const a = instantOf(known)

@@ -67,6 +67,16 @@ Quem está em cena é a classe da maioria das **três últimas chamadas de ferra
 
 HP e MP vêm dos limites da sua assinatura: fora de uma assinatura (por exemplo, com chave de API) mostram `--`. Um valor que a sessão ainda não informou mantém o último conhecido, então os medidores nunca se apagam ao trocar de personagem.
 
+## Avisos de limite baixo
+
+HP, MP e stamina avisam em toast antes de um limite estourar: quando o que **sobra** de um medidor cai abaixo de **20%** e depois abaixo de **10%**. O texto é em português e diz o valor e o tempo até o reset, por exemplo `O Mago está quase sem mana: 18%, reinicia em 1h40` (o HP de 7 dias usa dias: `reinicia em 3d 5h`). A stamina não tem reset; o toast dela lembra que o `/compact` a recupera: `O Explorador está quase sem fôlego: 18%. /compact recupera`.
+
+- **Uma vez por ciclo.** Cada faixa avisa uma vez. Ela só avisa de novo depois que o valor volta acima dela por 5 pontos (25% para a faixa de 20%, 15% para a de 10%), quando a janela reinicia ou, na stamina, depois de uma compactação que a recuperou (a leitura velha logo depois de compactar não avisa de novo). Uma queda que passa as duas faixas de uma vez mostra só a de 10%.
+- **Sem valor, sem aviso.** Um medidor que o engine não informa (HP e MP fora de uma assinatura) não avisa nem rearma; o aviso de stamina funciona sem assinatura.
+- **Só em memória.** O que já foi avisado vive na memória e some com a sessão, então um restart pode avisar mais uma vez. Nada vai ao store nem ao registro do `/guild trace`, e nenhum toast leva caminho, prompt ou comando.
+- **Cenas de demonstração.** Nunca avisam.
+- **A opção `alerts`.** `on` (padrão) ou `off`. Com `off` a guilda não mostra nenhum toast, inclusive o de descanso da compactação.
+
 ## Previsão das janelas
 
 Ao lado de HP e MP a guilda diz quando cada janela se esgota **no ritmo atual**: `5h esgota em ~40min`, `7d esgota em ~3 dias`, `5h dura até o reset` (dura até a janela reiniciar) ou `7d sem consumo` (nada está sendo gasto). Fica vermelha quando a janela se esgota antes de reiniciar.
@@ -126,7 +136,7 @@ O painel lateral tem uma linha de contadores logo acima da divisão do ouro e do
 - **Bugs derrotados.** Cada derrota conta uma vez: o instante em que um bug vivo cai, o mesmo que paga o bônus de XP.
 - **Dano causado.** Depois dos bugs, a linha mostra o resultado material do trabalho, por exemplo `bugs 3 · 3 arquivos · 142 linhas · 8 comandos`: os **arquivos distintos** editados (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`; o mesmo arquivo editado de novo conta uma vez), as **linhas** escritas (o mesmo valor que alimenta o XP) e os **comandos de shell** rodados. Só contam operações que deram certo, pela mesma regra do XP. Os três ficam escondidos enquanto todos forem zero. Dos arquivos só se guarda em memória uma impressão curta, nunca o caminho, e apenas os últimos 1000 distintos.
 - **Compactações.** Cada vez que o agente principal compacta o contexto (o seu `/compact` ou a compactação automática) a linha termina com `1 compactação`, `2 compactações`, e nada enquanto não houver nenhuma. Compactações de subagentes, as vetadas e o `precompute` do engine não contam. O segmento é o primeiro a sair num painel estreito: na forma curta (`2 compact.`) e depois removido, antes do dano.
-- **Toast de descanso.** Compactar recupera a stamina, então a guilda avisa: `A guilda descansou: ST recuperada de 12% para 64%`. O evento de compactação não traz o novo percentual, por isso o toast aparece quando chega a próxima medição, com a stamina conhecida antes da compactação e a medida depois dela. Só aparece quando a stamina subiu. Por enquanto o toast está sempre ligado (ainda não existe a opção `alerts`).
+- **Toast de descanso.** Compactar recupera a stamina, então a guilda avisa: `A guilda descansou: ST recuperada de 12% para 64%`. O evento de compactação não traz o novo percentual, por isso o toast aparece quando chega a próxima medição, com a stamina conhecida antes da compactação e a medida depois dela. Só aparece quando a stamina subiu. Ele segue a opção `alerts`: com `off` não aparece.
 - **Só em memória.** Nada vai ao store nem ao registro do `/guild trace`, nenhum toast leva caminho ou contagem (o toast de descanso só tem os dois percentuais), e tudo recomeça com a sessão. Os totais vitalícios são outra funcionalidade.
 - **Barra inferior.** Não mostra os contadores, de modo que as 8 linhas da barra compacta continuam valendo.
 - **Cenas de demonstração.** Todas mostram valores fictícios, `combo x7 · melhor x9 · bugs 3`; a cena `bug` acabou de perder o combo e mostra `melhor x9 · bugs 3`.
@@ -267,6 +277,7 @@ Reinicie o Claude Code e a guilda aparece acima do prompt.
 | `meters` | `padrao` | esquema de cores dos medidores: `padrao`, `contraste` (alto contraste) ou `daltonico` (para daltonismo); o salvo com `/guild meters` vale mais |
 | `demo` | `off` | uma cena fixa com valores fictícios: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, ou uma por esquema de cores: `esquema-padrao`, `esquema-contraste`, `esquema-daltonico` |
 | `showForecast` | `on` | `on`: mostra quando as janelas de 5 horas e de 7 dias se esgotam no ritmo atual; `off`: esconde a previsão |
+| `alerts` | `on` | `on`: toasts quando HP, MP ou stamina caem abaixo de 20% e de 10%, e quando uma compactação descansa a guilda; `off`: nenhum toast |
 
 Defina-as na instalação (`claude plugin install … --config bandSize=compact`), com `claude plugin configure guild-monitor` ou em `/plugin`.
 
@@ -313,7 +324,7 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 - `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
 - `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
-- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `damage.ts` (arquivos, linhas e comandos que deram certo), `compactions.ts` (compactações e o toast de descanso), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `gold.ts` (ouro por classe), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`, `schemes.ts` (esquemas de cores dos medidores), `choices.ts` (escolhas nomeadas guardadas entre sessões). Só `register.tsx` e `render.tsx` falam com o engine.
+- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `damage.ts` (arquivos, linhas e comandos que deram certo), `compactions.ts` (compactações e o toast de descanso), `alerts.ts` (quando um medidor cruza 20% ou 10%, e o texto do aviso), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `gold.ts` (ouro por classe), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`, `schemes.ts` (esquemas de cores dos medidores), `choices.ts` (escolhas nomeadas guardadas entre sessões). Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).
 
