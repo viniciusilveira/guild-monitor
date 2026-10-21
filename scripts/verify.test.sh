@@ -85,14 +85,30 @@ case "${1:-}" in
     grep -qi 'color-blind' README.md || { echo "fail: README.md has no accessibility note"; exit 1; }
     grep -qi 'daltonismo' README.pt-BR.md || { echo "fail: README.pt-BR.md has no accessibility note"; exit 1; }
     ;;
+  alerts-option)
+    node -e '
+      const { userConfig } = JSON.parse(require("fs").readFileSync(".claude-plugin/plugin.json", "utf8"))
+      const a = userConfig.alerts
+      const ok = a && a.type === "string" && a.default === "on" && JSON.stringify(a.options) === JSON.stringify(["on", "off"])
+      if (!ok) { console.error("fail: userConfig.alerts is", JSON.stringify(a)); process.exit(1) }
+    ' || exit 1
+    ;;
+  alerts-readmes)
+    for file in README.md README.pt-BR.md; do
+      grep -qF -- '| `alerts` | `on` |' "$file" || { echo "fail: $file has no row for the alerts option"; exit 1; }
+      for needle in '/compact' '20%' '10%' 'alerts'; do
+        grep -qF -- "$needle" "$file" || { echo "fail: $file does not mention $needle"; exit 1; }
+      done
+    done
+    ;;
   all)
-    for each in order fail-test fail-types colors colors-catches meters-option demo-options readmes; do
+    for each in order fail-test fail-types colors colors-catches meters-option demo-options readmes alerts-option alerts-readmes; do
       "$0" "$each" || exit 1
     done
     exit 0
     ;;
   *)
-    echo "usage: verify.test.sh order|fail-test|fail-types|colors|colors-catches|meters-option|demo-options|readmes|all" >&2
+    echo "usage: verify.test.sh order|fail-test|fail-types|colors|colors-catches|meters-option|demo-options|readmes|alerts-option|alerts-readmes|all" >&2
     exit 2
     ;;
 esac

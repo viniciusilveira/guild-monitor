@@ -67,6 +67,16 @@ The character on stage is the one most of the **last three tool calls** belong t
 
 HP and MP come from your subscription's rate limits: outside a subscription (for instance with an API key) they show `--`. A figure the session has not reported yet keeps its last known value, so the meters never blank when you switch characters.
 
+## Low alerts
+
+HP, MP and stamina warn you in a toast before a limit hits: when what is **left** of a meter falls below **20%** and then below **10%**. The text is in Portuguese and says the value and the time until the reset, for example `O Mago está quase sem mana: 18%, reinicia em 1h40` (the 7-day HP uses days: `reinicia em 3d 5h`). The stamina has no reset; its toast reminds that `/compact` recovers it: `O Explorador está quase sem fôlego: 18%. /compact recupera`.
+
+- **Once per cycle.** Each band warns once. It warns again only after the value goes back above it by 5 points (25% for the 20% band, 15% for the 10% band), when the window resets, or, for the stamina, after a compaction. A drop past both bands at once shows only the 10% one.
+- **No figure, no alert.** A meter the engine does not report (HP and MP outside a subscription) neither warns nor re-arms; the stamina alert works without a subscription.
+- **Memory only.** What was already warned lives in memory and is gone with the session, so a restart may warn once more. Nothing is saved to the store or the `/guild trace` log, and no toast carries a path, prompt or command.
+- **Demo scenes.** They never warn.
+- **The `alerts` option.** `on` (default) or `off`. With `off` the guild shows no toast at all, the rest toast of the compactions included.
+
 ## Forecast of the windows
 
 Next to HP and MP the guild says when each window runs out **at the current pace**, in Portuguese like the rest of the interface: `5h esgota em ~40min`, `7d esgota em ~3 dias`, `5h dura até o reset` (it lasts until the window resets) or `7d sem consumo` (nothing is being used). It is red when the window runs out before it resets.
@@ -126,7 +136,7 @@ The side panel has a line of counters above the gold split and the session and t
 - **Bugs defeated.** Each defeat counts once: the moment a live bug goes down, the same one that pays the XP bonus.
 - **Damage dealt.** After the bugs the line shows the material result of the work, for example `bugs 3 · 3 arquivos · 142 linhas · 8 comandos`: the **distinct files** edited (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`; the same file edited again counts once), the **lines** written (the same value that feeds the XP) and the **shell commands** run. Only operations that worked count, by the same rule as the XP. The three are hidden while all are zero. Of the files only a short fingerprint is kept in memory, never the path, and only the last 1000 distinct ones.
 - **Compactions.** Each time the main agent compacts the context (your `/compact` or the automatic one) the line ends with `1 compactação`, `2 compactações`, and nothing while there are none. Compactions by subagents, vetoed ones and the engine's `precompute` are not counted. The segment is the first to go on a narrow panel: in the short form (`2 compact.`) and then dropped, before the damage.
-- **Rest toast.** Compacting recovers stamina, so the guild announces it: `A guilda descansou: ST recuperada de 12% para 64%`. The compaction event does not carry the new percentage, so the toast appears when the next measurement arrives, with the stamina known before the compaction and the one measured after it. It is shown only when the stamina went up. For now the toast is always on (there is no `alerts` option yet).
+- **Rest toast.** Compacting recovers stamina, so the guild announces it: `A guilda descansou: ST recuperada de 12% para 64%`. The compaction event does not carry the new percentage, so the toast appears when the next measurement arrives, with the stamina known before the compaction and the one measured after it. It is shown only when the stamina went up. It follows the `alerts` option: with `off` it is not shown.
 - **Memory only.** Nothing is saved to the store or the `/guild trace` log, no toast carries a path or a count (the rest toast only has the two percentages), and everything starts over with the session. Lifetime totals are a separate feature.
 - **Bottom band.** It does not show the counters, so the compact band's 8 lines still hold.
 - **Demo scenes.** All of them show made-up values, `combo x7 · melhor x9 · bugs 3`; the `bug` scene has just lost its combo and shows `melhor x9 · bugs 3`.
@@ -269,6 +279,7 @@ Restart Claude Code and the guild appears above the prompt.
 | `meters` | `padrao` | color scheme of the meters: `padrao`, `contraste` (high contrast) or `daltonico` (color-blind friendly); the one saved with `/guild meters` wins |
 | `demo` | `off` | a fixed scene with made-up figures: `explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, or one per color scheme: `esquema-padrao`, `esquema-contraste`, `esquema-daltonico` |
 | `showForecast` | `on` | `on`: shows when the 5-hour and 7-day windows run out at the current pace; `off`: hides the forecast |
+| `alerts` | `on` | `on`: toasts when HP, MP or stamina fall below 20% and 10%, and when a compaction rests the guild; `off`: no toast at all |
 
 Set them on install (`claude plugin install … --config bandSize=compact`), with `claude plugin configure guild-monitor`, or in `/plugin`.
 
@@ -315,7 +326,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `damage.ts` (files, lines and commands that worked), `compactions.ts` (compactions and the rest toast), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `gold.ts` (gold split by class), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`, `schemes.ts` (color schemes of the meters), `choices.ts` (named choices saved between sessions). Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `damage.ts` (files, lines and commands that worked), `compactions.ts` (compactions and the rest toast), `alerts.ts` (when a meter crosses 20% or 10%, and the text of the warning), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `gold.ts` (gold split by class), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`, `schemes.ts` (color schemes of the meters), `choices.ts` (named choices saved between sessions). Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 
