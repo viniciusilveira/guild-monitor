@@ -71,7 +71,7 @@ HP e MP vêm dos limites da sua assinatura: fora de uma assinatura (por exemplo,
 
 HP, MP e stamina avisam em toast antes de um limite estourar: quando o que **sobra** de um medidor cai abaixo de **20%** e depois abaixo de **10%**. O texto é em português e diz o valor e o tempo até o reset, por exemplo `O Mago está quase sem mana: 18%, reinicia em 1h40` (o HP de 7 dias usa dias: `reinicia em 3d 5h`). A stamina não tem reset; o toast dela lembra que o `/compact` a recupera: `O Explorador está quase sem fôlego: 18%. /compact recupera`.
 
-- **Uma vez por ciclo.** Cada faixa avisa uma vez. Ela só avisa de novo depois que o valor volta acima dela por 5 pontos (25% para a faixa de 20%, 15% para a de 10%), quando a janela reinicia ou, na stamina, depois de uma compactação. Uma queda que passa as duas faixas de uma vez mostra só a de 10%.
+- **Uma vez por ciclo.** Cada faixa avisa uma vez. Ela só avisa de novo depois que o valor volta acima dela por 5 pontos (25% para a faixa de 20%, 15% para a de 10%), quando a janela reinicia ou, na stamina, depois de uma compactação que a recuperou (a leitura velha logo depois de compactar não avisa de novo). Uma queda que passa as duas faixas de uma vez mostra só a de 10%.
 - **Sem valor, sem aviso.** Um medidor que o engine não informa (HP e MP fora de uma assinatura) não avisa nem rearma; o aviso de stamina funciona sem assinatura.
 - **Só em memória.** O que já foi avisado vive na memória e some com a sessão, então um restart pode avisar mais uma vez. Nada vai ao store nem ao registro do `/guild trace`, e nenhum toast leva caminho, prompt ou comando.
 - **Cenas de demonstração.** Nunca avisam.

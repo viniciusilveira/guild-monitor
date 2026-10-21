@@ -71,7 +71,7 @@ HP and MP come from your subscription's rate limits: outside a subscription (for
 
 HP, MP and stamina warn you in a toast before a limit hits: when what is **left** of a meter falls below **20%** and then below **10%**. The text is in Portuguese and says the value and the time until the reset, for example `O Mago está quase sem mana: 18%, reinicia em 1h40` (the 7-day HP uses days: `reinicia em 3d 5h`). The stamina has no reset; its toast reminds that `/compact` recovers it: `O Explorador está quase sem fôlego: 18%. /compact recupera`.
 
-- **Once per cycle.** Each band warns once. It warns again only after the value goes back above it by 5 points (25% for the 20% band, 15% for the 10% band), when the window resets, or, for the stamina, after a compaction. A drop past both bands at once shows only the 10% one.
+- **Once per cycle.** Each band warns once. It warns again only after the value goes back above it by 5 points (25% for the 20% band, 15% for the 10% band), when the window resets, or, for the stamina, after a compaction that recovered it (the old reading right after compacting does not warn again). A drop past both bands at once shows only the 10% one.
 - **No figure, no alert.** A meter the engine does not report (HP and MP outside a subscription) neither warns nor re-arms; the stamina alert works without a subscription.
 - **Memory only.** What was already warned lives in memory and is gone with the session, so a restart may warn once more. Nothing is saved to the store or the `/guild trace` log, and no toast carries a path, prompt or command.
 - **Demo scenes.** They never warn.

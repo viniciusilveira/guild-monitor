@@ -93,12 +93,7 @@ export const tokensSpent = (tracker: Tracker, usage: unknown, isSubagent: boolea
 }
 
 // The main agent compacted: `before` is the stamina known until then (percent left; null when none was).
-// The compaction recovers the stamina, so its warnings are armed again.
-export const compacted = (tracker: Tracker, before: number | null): Tracker => ({
-  ...tracker,
-  compactions: onCompaction(tracker.compactions, before),
-  alerts: { ...tracker.alerts, st: rearm(tracker.alerts.st) },
-})
+export const compacted = (tracker: Tracker, before: number | null): Tracker => ({ ...tracker, compactions: onCompaction(tracker.compactions, before) })
 
 export type Fire = { meter: MeterId; band: Band; value: number }
 
@@ -117,10 +112,15 @@ export const metersMeasured = (tracker: Tracker, readings: Record<MeterId, Readi
 }
 
 // A measurement of the stamina (percent left; null when unknown): it brings the message of a pending compaction.
+// The stamina warnings are armed again only when the compaction is seen to have recovered it (the message): a reading
+// that is still the old one, or lower, or missing leaves them as they were.
 export const staminaMeasured = (tracker: Tracker, after: number | null): { tracker: Tracker; announce?: Announcement } => {
   const done = onStamina(tracker.compactions, after)
+  if (done.state === tracker.compactions) return { tracker }
 
-  return done.state === tracker.compactions ? { tracker } : { tracker: { ...tracker, compactions: done.state }, announce: done.announce }
+  const next = { ...tracker, compactions: done.state }
+
+  return done.announce === undefined ? { tracker: next } : { tracker: { ...next, alerts: { ...next.alerts, st: rearm(next.alerts.st) } }, announce: done.announce }
 }
 
 // The interval a reading of the cost is about to close: take it when the reading is asked for, before waiting for it.

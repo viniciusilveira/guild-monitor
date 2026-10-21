@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { alertsOn, alertText, crossing, NO_METER, resetText } from './alerts'
 import type { Band, MeterAlert, Reading } from './alerts'
-import { compacted, createTracker, metersMeasured } from './tracker'
+import { compacted, createTracker, metersMeasured, staminaMeasured } from './tracker'
 import { emptyGuild } from './xp'
 
 // The bands that fire along a sequence of readings of one meter (`undefined` where nothing fires).
@@ -53,16 +53,75 @@ test('alerts C5: an absent value fires nothing and re-arms nothing', async () =>
   expect(along([15, null, 30, 15])).toEqual([20, undefined, undefined, 20])
 })
 
-test('alerts C6: a compaction re-arms the stamina only, in the tracker', async () => {
+test('alerts C6: a compaction that recovers the stamina re-arms the stamina only, in the tracker', async () => {
   const all = { hp: { value: 15 }, mp: { value: 15 }, st: { value: 15 } }
   const first = metersMeasured(createTracker(emptyGuild(), 0), all)
   expect(first.fires.map(fire => fire.meter)).toEqual(['hp', 'mp', 'st'])
 
   expect(metersMeasured(first.tracker, all).fires).toEqual([])
 
-  const after = metersMeasured(compacted(first.tracker, 15), all)
+  // Compacted, and the next stamina is 18: higher, but still below 20. Only the re-arm lets it warn.
+  const rested = staminaMeasured(compacted(first.tracker, 15), 18)
+  expect(rested.announce).toEqual({ before: 15, after: 18 })
+
+  const after = metersMeasured(rested.tracker, { ...all, st: { value: 18 } })
   expect(after.fires.map(fire => fire.meter)).toEqual(['st'])
-  expect(after.fires[0]).toMatchObject({ band: 20, value: 15 })
+  expect(after.fires[0]).toMatchObject({ band: 20, value: 18 })
+})
+
+test('alerts C6 pending: until the compaction is seen to recover the stamina nothing is re-armed', async () => {
+  const warned = metersMeasured(createTracker(emptyGuild(), 0), { hp: { value: null }, mp: { value: null }, st: { value: 15 } }).tracker
+  const st = (tracker: typeof warned, value: number | null) => metersMeasured(tracker, { hp: { value: null }, mp: { value: null }, st: { value } }).fires
+
+  // Pending, and the engine repeats the old reading: no warning, and the compaction stays pending.
+  const pending = compacted(warned, 15)
+  expect(st(pending, 15)).toEqual([])
+  const stale = staminaMeasured(pending, 15)
+  expect(stale.announce).toBeUndefined()
+  expect(st(stale.tracker, 15)).toEqual([])
+
+  // A reading with no figure changes nothing either.
+  const absent = staminaMeasured(stale.tracker, null)
+  expect(st(absent.tracker, 15)).toEqual([])
+
+  // The compaction closes with a lower reading (it did not help): no message and no re-arm.
+  const lower = staminaMeasured(stale.tracker, 14)
+  expect(lower.announce).toBeUndefined()
+  expect(lower.tracker.compactions.pending).toBeNull()
+  expect(st(lower.tracker, 14)).toEqual([])
+  expect(st(lower.tracker, 15)).toEqual([])
+
+  // Two compactions before the measurement make one re-arm, when it rises.
+  const twice = staminaMeasured(compacted(compacted(warned, 15), 15), 18)
+  expect(twice.announce).toEqual({ before: 15, after: 18 })
+  expect(st(twice.tracker, 18).map(fire => fire.band)).toEqual([20])
+
+  // A measurement with no compaction pending re-arms nothing, even a rise.
+  const none = staminaMeasured(warned, 22)
+  expect(none.announce).toBeUndefined()
+  expect(st(none.tracker, 18)).toEqual([])
+})
+
+test('alerts C6 bands: warned in both bands, a compaction that recovers it and a new fall to 9 warn band 10 again', async () => {
+  const only = (value: number | null) => ({ hp: { value: null }, mp: { value: null }, st: { value } })
+  const first = metersMeasured(createTracker(emptyGuild(), 0), only(9))
+  expect(first.fires.map(fire => fire.band)).toEqual([10])
+
+  const rested = staminaMeasured(compacted(first.tracker, 9), 64)
+  expect(rested.announce).toEqual({ before: 9, after: 64 })
+  expect(metersMeasured(rested.tracker, only(64)).fires).toEqual([])
+
+  const again = metersMeasured(rested.tracker, only(9)).fires
+  expect(again).toEqual([{ meter: 'st', band: 10, value: 9 }])
+  expect(alertText('st', again[0]?.band ?? 20, 9, '')).toBe('O Explorador está com o fôlego por um fio: 9%. /compact recupera')
+})
+
+test('alerts C6 meters: a compaction never re-arms HP or MP', async () => {
+  const all = { hp: { value: 15 }, mp: { value: 15 }, st: { value: 15 } }
+  const warned = metersMeasured(createTracker(emptyGuild(), 0), all).tracker
+  const rested = staminaMeasured(compacted(warned, 15), 18)
+
+  expect(metersMeasured(rested.tracker, { ...all, st: { value: 18 } }).fires.map(fire => fire.meter)).toEqual(['st'])
 })
 
 test('alerts C8: the texts of MP and HP carry the value and the time to the reset', async () => {

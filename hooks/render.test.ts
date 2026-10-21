@@ -2495,7 +2495,13 @@ const measureAll = ($: Engine, contextUsed: number, rateLimits: Limit[]) =>
 
 const ST_15 = 'O Explorador está quase sem fôlego: 15%. /compact recupera'
 
-test('alerts C6 e2e: after a compaction the stamina warns again on the same reading, HP and MP stay quiet', { options: { layout: 'bar' } }, async ($, on) => {
+// The periodic reading of the engine's session answers `contextPercent`: a test that moves the stamina moves both.
+const feedContext = async ($: Engine, used: number, rateLimits: Limit[] = []) => {
+  contextPercent = used
+  await measureAll($, used, rateLimits)
+}
+
+test('alerts C6 e2e: a compaction that recovers the stamina re-arms it, HP and MP stay quiet', { options: { layout: 'bar' } }, async ($, on) => {
   const toasts: string[] = []
   nextFast = true
   nextLimits = [five(85), seven(85)]
@@ -2507,11 +2513,65 @@ test('alerts C6 e2e: after a compaction the stamina warns again on the same read
   await measureAll($, 85, [five(85), seven(85)])
   expect(toasts).toHaveLength(3)
 
+  // Compacted, and the stamina rises from 15% to 18%: still below the band, so only the re-arm lets it warn.
   await compact($)
-  await measureAll($, 85, [five(85), seven(85)])
+  await feedContext($, 82, [five(85), seven(85)])
 
-  expect(toasts).toHaveLength(4)
-  expect(toasts[3]).toBe(ST_15)
+  expect(toasts).toHaveLength(5)
+  expect(toasts[3]).toBe('A guilda descansou: ST recuperada de 15% para 18%')
+  expect(toasts[4]).toBe('O Explorador está quase sem fôlego: 18%. /compact recupera')
+})
+
+test('alerts C6 e2e stale: the old reading right after a compaction does not warn again, the recovery rests and re-arms, a new fall warns', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 88
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await feedContext($, 88)
+  expect(toasts).toEqual(['O Explorador está quase sem fôlego: 12%. /compact recupera'])
+
+  await compact($)
+  await feedContext($, 88)
+  expect(toasts).toHaveLength(1)
+
+  await feedContext($, 36)
+  expect(toasts).toHaveLength(2)
+  expect(toasts[1]).toBe('A guilda descansou: ST recuperada de 12% para 64%')
+
+  await feedContext($, 85)
+  expect(toasts).toHaveLength(3)
+  expect(toasts[2]).toBe(ST_15)
+})
+
+test('alerts C6 e2e bands: warned at 9%, a compaction that recovers and a new fall to 9% warn the band 10 text again', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 91
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await feedContext($, 91)
+  await compact($)
+  await feedContext($, 36)
+  await feedContext($, 91)
+
+  const text = 'O Explorador está com o fôlego por um fio: 9%. /compact recupera'
+  expect(toasts).toEqual([text, 'A guilda descansou: ST recuperada de 9% para 64%', text])
+})
+
+test('alerts C6 e2e lower: a compaction whose measurement does not rise does not re-arm', { options: { layout: 'bar' } }, async ($, on) => {
+  const toasts: string[] = []
+  nextFast = true
+  nextContext = 85
+  await setup($, on, () => false, () => undefined, toastsStore(toasts))
+  await feedContext($, 85)
+  expect(toasts).toEqual([ST_15])
+
+  await compact($)
+  // 14% is lower than the 15% before: the compaction closes without a message, and nothing warns again.
+  await feedContext($, 86)
+  await feedContext($, 86)
+  await feedContext($, 85)
+
+  expect(toasts).toEqual([ST_15])
 })
 
 test('alerts C7 e2e: without rate limits only the stamina alert shows', { options: { layout: 'bar' } }, async ($, on) => {
@@ -2686,8 +2746,9 @@ test('alerts C13 e2e: after warnings, a re-arm and a compaction the store and th
   nextContext = 91
   await measureAll($, 91, [five(92), seven(95)])
   await compact($)
+  await measureAll($, 20, [five(92), seven(95)])
   await measureAll($, 91, [five(92), seven(95)])
-  expect(toasts.length).toBeGreaterThanOrEqual(7)
+  expect(toasts.length).toBeGreaterThanOrEqual(8)
   await call($, 'Edit', { file_path: '/Users/me/segredo/a.ts', old_string: 'b', new_string: 'c' })
 
   expect(writes.length).toBeGreaterThan(0)
