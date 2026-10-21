@@ -443,3 +443,50 @@ test('lifetime C11b: the refusal to reset says why in Portuguese within 40 colum
   expect(text).toContain('Nada foi alterado')
   for (const line of text.split('\n')) expect(line.length, line).toBeLessThanOrEqual(40)
 })
+
+test('lifetime C9b: the window is exactly 5 seconds, not a second less nor more', async () => {
+  const store = fakeStore()
+  const keeper = await keeperOn(store)
+  const start = at(20)
+
+  await keeper.record({ kind: 'compaction' }, start)
+  expect(store.writes.length).toBe(1)
+
+  await keeper.record({ kind: 'compaction' }, start + 1)
+  await keeper.flush(start + 4_999)
+  expect(store.writes.length).toBe(1)
+
+  await keeper.flush(start + 5_000)
+  expect(store.writes.length).toBe(2)
+  expect((store.writes[1]?.value as Lifetime).compactions).toBe(2)
+
+  // The window counts from the last write, not from the last event.
+  await keeper.record({ kind: 'compaction' }, start + 9_999)
+  expect(store.writes.length).toBe(2)
+  await keeper.record({ kind: 'compaction' }, start + 10_000)
+  expect(store.writes.length).toBe(3)
+})
+
+test('lifetime C8b: one day without use keeps the streak, two days break it', async () => {
+  const lifetime = { ...full, lastDay: '2026-10-20', streak: 3, bestStreak: 7 }
+
+  expect(currentStreak(lifetime, '2026-10-20')).toBe(3)
+  expect(currentStreak(lifetime, '2026-10-21')).toBe(3)
+  expect(currentStreak(lifetime, '2026-10-22')).toBe(0)
+  expect(currentStreak(lifetime, '2026-11-20')).toBe(0)
+  expect(statsText(lifetime, '2026-10-22')).toContain('Sequência: 0 dias (melhor: 7)')
+  expect(statsText(lifetime, '2026-10-21')).toContain('Sequência: 3 dias (melhor: 7)')
+})
+
+test('lifetime C1e: an event with a time that is not a number changes nothing, and the command word is read in any case', async () => {
+  const store = fakeStore()
+  const keeper = await keeperOn(store)
+
+  await keeper.record({ kind: 'compaction' }, Number.NaN)
+  await keeper.record({ kind: 'compaction' }, Infinity)
+  expect(keeper.current()).toEqual(emptyLifetime())
+  expect(store.writes.length).toBe(0)
+
+  expect(statsRequest('Stats')).toBe('show')
+  expect(statsRequest('STATS RESET')).toBe('reset')
+})
