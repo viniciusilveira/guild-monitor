@@ -294,7 +294,7 @@ export const sidebarTree = (ui: Elements['terminal'], args: SidebarArgs) => {
           ))}
         </Box>
       )}
-      <Text key="counters" color={colors.gold}>{counterLine(counterSegments(view.counters))}</Text>
+      <Text key="counters" color={colors.gold}>{counterLine(counterSegments(view))}</Text>
       {goldLines(ui, view, columns)}
       <Text key="session-time" dimColor>{`sessão ${seconds(view.sessionSeconds)}`}</Text>
       <Text key="turn-time" dimColor>{`turno ${seconds(view.turnSeconds)}`}</Text>

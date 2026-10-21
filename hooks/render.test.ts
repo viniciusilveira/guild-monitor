@@ -801,7 +801,9 @@ const panelTexts = async ($: Engine, columns = 60) => {
   return texts
 }
 
-const countersLine = async ($: Engine, columns = 60) => (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+$/.test(text))
+// The combo, best combo and bugs of the counters line: the damage dealt after them has its own tests (`damage C*`).
+const countersLine = async ($: Engine, columns = 60) =>
+  (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+( · .*)?$/.test(text))?.replace(/( · \d+ (arquivos?|linhas?|comandos?))+$/, '')
 
 const edits = async ($: Engine, n: number) => {
   for (let i = 0; i < n; i += 1) await call($, 'Edit', EDIT)
@@ -848,7 +850,7 @@ test('counters C10: the panel shows combo, best combo and defeats between the ch
 
   for (const columns of [40, 60]) {
     const texts = await panelTexts($, columns)
-    const at = texts.indexOf('combo x7 · melhor x9 · bugs 3')
+    const at = texts.findIndex(text => text.startsWith('combo x7 · melhor x9 · bugs 3'))
     const session = texts.findIndex(text => text.startsWith('sessão'))
 
     expect(at).toBeGreaterThan(-1)
@@ -1627,7 +1629,7 @@ test('gold C18: the panel shows the split between the counters and the session t
 
   for (const columns of [40, 60]) {
     const texts = await panelTexts($, columns)
-    const counters = texts.findIndex(text => /bugs \d+$/.test(text))
+    const counters = texts.findIndex(text => /bugs \d+( · .*)?$/.test(text))
     const session = texts.findIndex(text => text.startsWith('sessão'))
 
     expect(texts.filter(text => GOLD_LINE.test(text))).toEqual(FULL_LINES)
@@ -1912,7 +1914,7 @@ test('meters C2: the default scheme paints the screen with today\'s colors', { o
   expect(colorOf(panel, 'ST ')).toBe('#F39C12')
   expect(colorOf(panel, 'XP ')).toBe('#9B59B6')
   expect(colorOf(panel, 'ouro ')).toBe('#F1C40F')
-  expect(colorOf(panel, /bugs \d+$/)).toBe('#F1C40F')
+  expect(colorOf(panel, /bugs \d+( · .*)?$/)).toBe('#F1C40F')
   expect(colorOf(panel, /^5h esgota/)).toBe('#E74C3C')
   expect(colorOf(panel, /^tokens /)).toBe('#5DADE2')
   expect(colorOf(panel, /^subagentes /)).toBe('#E74C3C')
@@ -2191,4 +2193,88 @@ test('meters C24: during a scheme scene the answer says the saved scheme waits f
   await $.command.run({ command: 'guild', args: 'esquema-contraste' } as never)
   await $.command.run({ command: 'guild', args: 'off' } as never)
   expect(colorOf(await panelItems($), 'HP ')).toBe(SCHEMES.padrao.hpHigh)
+})
+
+// Damage dealt: files, lines and commands on the counters line.
+const counterText = async ($: Engine, columns = 60) => (await panelTexts($, columns)).find(text => /(^|\b)bugs \d+( · .*)?$/.test(text))
+
+const lines = (n: number) => Array.from({ length: n }, () => 'x').join('\n')
+
+test('damage C1: Edit twice in a.ts and Write in b.ts make 2 files; every file tool counts its file', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await call($, 'Edit', { file_path: '/p/a.ts', old_string: 'a', new_string: 'b' })
+  await call($, 'Edit', { file_path: '/p/a.ts', old_string: 'b', new_string: 'c' })
+  await call($, 'Write', { file_path: '/p/b.ts', content: 'x' })
+  expect(await counterText($)).toBe('combo x3 · melhor x3 · bugs 0 · 2 arquivos · 3 linhas · 0 comandos')
+
+  await call($, 'MultiEdit', { file_path: '/p/c.ts', edits: [{ old_string: 'a', new_string: 'b' }] })
+  await call($, 'NotebookEdit', { notebook_path: '/p/d.ipynb', new_source: 'x' })
+  expect(await counterText($)).toContain('4 arquivos')
+})
+
+test('damage C2 subagent: calls from a subagent add no file, line or command', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await call($, 'Edit', { ...EDIT, agentId: 'sub1' })
+  await call($, 'Bash', { command: 'npm test', agentId: 'sub1' })
+
+  expect(await counterText($)).toBe('bugs 0')
+})
+
+test('damage C6: the panel shows 3 files, 142 lines and 8 commands after the bugs', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await call($, 'Edit', { file_path: '/p/a.ts', old_string: 'a', new_string: 'b' })
+  await call($, 'Write', { file_path: '/p/b.ts', content: lines(100) })
+  await call($, 'Write', { file_path: '/p/c.ts', content: lines(41) })
+  for (let i = 0; i < 8; i += 1) await call($, 'Bash', { command: 'npm test' })
+
+  expect(await counterText($)).toBe('combo x11 · melhor x11 · bugs 0 · 3 arquivos · 142 linhas · 8 comandos')
+})
+
+test('damage C6 plural: one file, one line and one command are written in the singular, and nothing shows without damage', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  expect(await counterText($)).toBe('bugs 0')
+
+  await call($, 'Edit', EDIT)
+  await call($, 'Bash', { command: 'npm test' })
+
+  expect(await counterText($)).toBe('bugs 0 · 1 arquivo · 1 linha · 1 comando')
+})
+
+test('damage C7: a new session zeroes the damage and the panel hides it', { options: { layout: 'bar' } }, async ($, on) => {
+  await start($, on)
+  await call($, 'Edit', EDIT)
+  await call($, 'Bash', { command: 'npm test' })
+  expect(await counterText($)).toContain('1 arquivo · 1 linha · 1 comando')
+
+  await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
+
+  expect(await counterText($)).toBe('bugs 0')
+})
+
+test('damage C8: no store write, trace entry or toast carries the path of an edited file', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: Array<[string, unknown]> = []
+  const toasts: string[] = []
+  const store = (on: On) => {
+    on('store.get', async (_$, e) => ({ value: e.key === 'guild.v1' ? { guerreiro: { xp: 159 } } : undefined }) as never)
+    on('store.set', async (_$, e) => {
+      writes.push([e.key, e.value])
+
+      return { value: undefined } as never
+    })
+    on('ui.toast', async (_$, e) => {
+      toasts.push(JSON.stringify(e))
+
+      return { value: undefined } as never
+    })
+  }
+  await start($, on, store)
+  await call($, 'Edit', EDIT)
+  await call($, 'Write', { file_path: '/Users/me/src/notes.md', content: 'a\nb' })
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 7_000 } as never)
+
+  expect(await counterText($)).toContain('2 arquivos · 3 linhas')
+  expect(writes.length).toBeGreaterThan(0)
+  const written = [...writes.map(write => JSON.stringify(write)), ...toasts].join('\n')
+  expect(written).not.toMatch(/register\.tsx|notes\.md|\/Users\/me|arquivo|linhas|comandos/)
+  expect((await panelTexts($)).join('\n')).not.toMatch(/register\.tsx|\/Users\/me\/src\/notes/)
 })

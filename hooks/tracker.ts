@@ -4,6 +4,8 @@ import type { Gold } from './gold'
 import type { Interval } from './gold'
 import { goldMeasured, goldOperation, intervalOf, NO_GOLD } from './gold'
 import type { Counters } from './counters'
+import type { Damage } from './damage'
+import { NO_DAMAGE, onDeed } from './damage'
 import { NO_COUNTERS, onOperation } from './counters'
 import type { Bug } from './guild'
 import { bugAt, categoryOf, NO_BUG, onToolResult } from './guild'
@@ -41,6 +43,8 @@ export type Tracker = {
   guild: Guild
   // Combo, best combo and bugs defeated in this session; memory only, never stored.
   counters: Counters
+  // Files, lines and commands that worked in this session; memory only, never stored (no path, only fingerprints).
+  damage: Damage
   lastActivityAt: number
   recent: readonly Entry[]
   // Calls in progress, oldest first: the last one is the most recent not yet finished.
@@ -60,6 +64,7 @@ export const createTracker = (guild: Guild, now: number): Tracker => ({
   bug: NO_BUG,
   guild,
   counters: NO_COUNTERS,
+  damage: NO_DAMAGE,
   lastActivityAt: now,
   recent: [],
   running: [],
@@ -154,12 +159,15 @@ export const toolFinished = (
   const moved: Tracker = { ...tracker, bug, counters, gold, lastActivityAt: done.now }
   if (turn === null || done.isError) return { tracker: moved }
 
-  const xp = operationXp({ durationMs: done.durationMs, lines: done.use.lines ?? 0 }) + (resolved ? BUG_BONUS : 0)
+  // The lines are worked out once: the same value pays the XP and feeds the damage counter.
+  const lines = done.use.lines ?? 0
+  const xp = operationXp({ durationMs: done.durationMs, lines }) + (resolved ? BUG_BONUS : 0)
   const added = addXp(tracker.guild, cls, xp)
+  const damage = onDeed(tracker.damage, { lines, file: done.use.file, isCommand: done.use.tool === 'Bash' })
   const entry: Entry = { cls, xp, at: done.now, tool: done.use.tool }
 
   return {
-    tracker: { ...moved, guild: added.guild, recent: [...tracker.recent, entry].slice(-MAX_RECENT) },
+    tracker: { ...moved, damage, guild: added.guild, recent: [...tracker.recent, entry].slice(-MAX_RECENT) },
     gain: { cls, xp, level: added.level, leveledUp: added.leveledUp },
   }
 }

@@ -1,3 +1,6 @@
+import type { ViewModel } from '../types'
+import { damageSegments } from './damage'
+
 // The session's scores: the combo (operations in a row that worked), the best combo and the bugs
 // defeated. They live in memory with the tracker and start over with the session.
 export type Counters = { combo: number; best: number; bugs: number }
@@ -25,12 +28,13 @@ export const onOperation = (counters: Counters, operation: Operation): Counters 
   }
 }
 
-// The pieces of the counters line, in order. Later slices (damage dealt, compactions) add theirs
-// to the list; the line only joins what it is given.
-export const counterSegments = (counters: Counters): string[] => [
-  ...(counters.combo >= COMBO_MIN ? [`combo x${counters.combo}`] : []),
-  ...(counters.best >= COMBO_MIN ? [`melhor x${counters.best}`] : []),
-  `bugs ${counters.bugs}`,
+// The pieces of the counters line, in order. It takes the whole view, so a later slice (compactions) adds its
+// field to the view and its segment here without changing the signature; the line only joins what it is given.
+export const counterSegments = (view: ViewModel): string[] => [
+  ...(view.counters.combo >= COMBO_MIN ? [`combo x${view.counters.combo}`] : []),
+  ...(view.counters.best >= COMBO_MIN ? [`melhor x${view.counters.best}`] : []),
+  `bugs ${view.counters.bugs}`,
+  ...damageSegments(view.damage),
 ]
 
 export const counterLine = (segments: readonly string[]): string => segments.join(' · ')

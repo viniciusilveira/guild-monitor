@@ -5,6 +5,7 @@ import { animationFor, bugAt, DEFAULTS } from './guild'
 import { doingOf } from './doing'
 import type { History } from './forecast'
 import { EMPTY_HISTORY, forecastLine } from './forecast'
+import { damageView } from './damage'
 import { goldLines } from './gold'
 import type { MeterColors } from './schemes'
 import { SCHEMES } from './schemes'
@@ -108,6 +109,7 @@ export const buildView = (tracker: Tracker, usage: Usage, now: number, settings:
     costUsd: usage.costUsd ?? null,
     gold: goldLines(tracker.gold),
     goldPartial: tracker.gold.base > 0,
+    damage: damageView(tracker.damage),
     counters: { combo: tracker.counters.combo, best: tracker.counters.best, bugs: tracker.counters.bugs },
     recent: [...tracker.recent],
     doing: doingOf(tracker.running),

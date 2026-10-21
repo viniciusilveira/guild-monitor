@@ -4,6 +4,7 @@ import type { CoreEngineInterface, Register, StateDollar } from 'claude-code'
 import type { ViewModel } from '../types'
 import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
+import { fileOf } from './damage'
 import { targetOf } from './doing'
 import { chooseFrom, describeChoices, helpText, mergeSaved, requestOf, savedChoice, savedText } from './choices'
 import { choiceOf, demoState, SCENES, SCHEME_SCENES, sceneOf, schemeOfScene } from './demo'
@@ -346,6 +347,7 @@ export const register: Register = (on, options) => {
       command: typeof input.command === 'string' ? input.command : undefined,
       subagent: typeof input.subagent_type === 'string' ? input.subagent_type : undefined,
       lines: linesWritten(input),
+      file: fileOf(e.tool, input),
     }
 
     const startedAt = await $.clock.now()
