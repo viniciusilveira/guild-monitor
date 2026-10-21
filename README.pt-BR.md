@@ -92,6 +92,34 @@ XP da operação = 2  +  min(segundos / 2, 4)  +  min(linhas escritas / 20, 4)  
 
 O nível `n` começa em `40 × (n − 1)²` de XP: nível 2 com 40, nível 3 com 160, nível 4 com 360, nível 5 com 640. O XP fica salvo no armazenamento do plugin (`guild.v1`) e sobrevive a reinícios. Um aviso anuncia cada nível novo.
 
+## Totais vitalícios
+
+O XP não é a única coisa que sobrevive a um reinício: a guilda também guarda seus **totais entre sessões**, num registro próprio (`guild.lifetime.v1`), separado do XP para que uma leitura que falhe num deles nunca apague o outro. O `/guild stats` mostra:
+
+```
+Totais da guilda (só nesta máquina)
+Primeiro dia: 01/10/2026
+Último dia: 20/10/2026
+Dias de uso: 12
+Sequência: 3 dias (melhor: 7)
+Tarefas: 41
+  Mago: 10
+  Guerreiro: 25
+  Explorador: 6
+Bugs derrotados: 9
+Melhor combo: x14
+Operações: 812
+Tempo total: 14h05
+Compactações: 3
+```
+
+- **O que conta.** Tarefas são os turnos que o agente principal respondeu, na classe que estava em cena (os mesmos que pagam os +3 de XP); operações são as chamadas de ferramenta do agente principal que terminaram, com ou sem erro (as recusadas e as rejeitadas não são operações); bugs derrotados e melhor combo são os do combo, levados entre sessões; o tempo total é a soma da duração dos turnos, como o motor a informa; as compactações são as do agente principal, contadas como acima.
+- **Dias e sequência.** Um dia é o **seu dia local**. O primeiro uso do dia soma um dia de uso e estende a sequência se você também usou o dia anterior; pular um dia inteiro recomeça a sequência em 1 e mantém a melhor. Antes do próximo uso, uma sequência quebrada aparece como `0 dias`.
+- **Privacidade.** Só contadores e datas chegam ao store: nunca prompts, respostas, comandos, caminhos (nem impressões deles) ou texto de tarefa. Os totais são locais a cada máquina; não há sincronização.
+- **Escrita.** Em lote, no máximo uma a cada 5 segundos, e o que estiver pendente é gravado quando a sessão termina, então nada se perde no reinício.
+- **Leitura defensiva.** Campo ausente ou adulterado recomeça do zero e os outros são mantidos. Um registro de versão mais nova que a do plugin é lido, mas nunca sobrescrito, e um store que não pôde ser lido também não é gravado, para que um plugin antigo nunca apague dados de um mais novo.
+- **`/guild stats reset`** zera os totais (inclusive o primeiro e o último dia) e avisa o que fez. **Não** mexe no XP nem nos níveis.
+
 ## O bug
 
 Quando uma chamada de ferramenta falha, o bug aparece embaixo dos status do personagem ativo. Uma chamada bem-sucedida **do mesmo tipo** depois dele o derrota (em comandos de shell, o mesmo programa e subcomando: `npm test`, `git push`; nas demais ferramentas, a mesma ferramenta). Se nenhuma chamada do mesmo tipo voltar, o bug some sozinho após **2 minutos sem novo erro de ferramenta**; um novo erro reinicia essa contagem. Chamadas recusadas por permissão ou por um hook, e as que **você mesmo recusa** (um plano recusado, uma permissão negada, uma pergunta interrompida), não contam como falha: não criam bug, não derrotam o bug vivo e não pagam XP. No `/guild trace` elas aparecem como `RECUSADA`, e não como `ERRO`. Reconhecer uma recusa é melhor esforço: um plano ou uma pergunta recusados são sempre reconhecidos, mas nas demais ferramentas isso depende do texto de recusa do engine, que pode mudar entre versões, e um comando de shell que você interrompe em andamento ainda cria bug.
@@ -127,7 +155,7 @@ O painel lateral tem uma linha de contadores logo acima da divisão do ouro e do
 - **Dano causado.** Depois dos bugs, a linha mostra o resultado material do trabalho, por exemplo `bugs 3 · 3 arquivos · 142 linhas · 8 comandos`: os **arquivos distintos** editados (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`; o mesmo arquivo editado de novo conta uma vez), as **linhas** escritas (o mesmo valor que alimenta o XP) e os **comandos de shell** rodados. Só contam operações que deram certo, pela mesma regra do XP. Os três ficam escondidos enquanto todos forem zero. Dos arquivos só se guarda em memória uma impressão curta, nunca o caminho, e apenas os últimos 1000 distintos.
 - **Compactações.** Cada vez que o agente principal compacta o contexto (o seu `/compact` ou a compactação automática) a linha termina com `1 compactação`, `2 compactações`, e nada enquanto não houver nenhuma. Compactações de subagentes, as vetadas e o `precompute` do engine não contam. O segmento é o primeiro a sair num painel estreito: na forma curta (`2 compact.`) e depois removido, antes do dano.
 - **Toast de descanso.** Compactar recupera a stamina, então a guilda avisa: `A guilda descansou: ST recuperada de 12% para 64%`. O evento de compactação não traz o novo percentual, por isso o toast aparece quando chega a próxima medição, com a stamina conhecida antes da compactação e a medida depois dela. Só aparece quando a stamina subiu. Por enquanto o toast está sempre ligado (ainda não existe a opção `alerts`).
-- **Só em memória.** Nada vai ao store nem ao registro do `/guild trace`, nenhum toast leva caminho ou contagem (o toast de descanso só tem os dois percentuais), e tudo recomeça com a sessão. Os totais vitalícios são outra funcionalidade.
+- **Só em memória.** Nada vai ao store nem ao registro do `/guild trace`, nenhum toast leva caminho ou contagem (o toast de descanso só tem os dois percentuais), e tudo recomeça com a sessão. Os totais vitalícios são outro registro: veja *Totais vitalícios*.
 - **Barra inferior.** Não mostra os contadores, de modo que as 8 linhas da barra compacta continuam valendo.
 - **Cenas de demonstração.** Todas mostram valores fictícios, `combo x7 · melhor x9 · bugs 3`; a cena `bug` acabou de perder o combo e mostra `melhor x9 · bugs 3`.
 
@@ -221,6 +249,7 @@ Ele abre sozinho a partir de 144 colunas (110 depois que você mesmo o abriu), a
 | `/guild panel` | abre o painel lateral e passa a abri-lo sempre |
 | `/guild bar` | fecha o painel e volta à barra inferior |
 | `/guild trace [N\|clear]` | mostra o registro das últimas N chamadas de ferramenta (padrão 20): quem estava em cena, quem ganhou o XP (`ERRO` marca uma falha, `RECUSADA` uma chamada que você recusou) e um resumo; `clear` apaga. Só nomes de ferramenta, classes e o nome do programa de um comando de shell são guardados, nunca prompts, caminhos, argumentos nem variáveis |
+| `/guild stats [reset]` | mostra os totais vitalícios (dias, sequência, tarefas por classe, bugs, melhor combo, operações, tempo, compactações); `reset` os zera e não toca no XP nem nos níveis |
 | `/guild meters [nome]` | troca na hora o esquema de cores dos medidores (`padrao`, `contraste`, `daltonico`) e o guarda para as próximas sessões; sem nome, lista os esquemas |
 | `/guild <cena>` | mostra uma cena de demonstração (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, `esquema-padrao`, `esquema-contraste`, `esquema-daltonico`); `/guild off` volta à sessão real |
 
@@ -313,7 +342,7 @@ node scripts/build-sprites.mjs   # reconstrói hooks/sprites.generated.ts a part
 
 - `.claude-plugin/types/` guarda as declarações de tipos do Claude Code, que o engine grava ali ao carregar o plugin como mod. Está no `.gitignore`; o `tsc -p .` precisa dela, então o `scripts/verify` para com uma mensagem quando ela falta (o CI define `VERIFY_SKIP_TYPES=1` e pula a checagem de tipos).
 - `scripts/engine-check` roda uma sessão curta de `claude -p` com o plugin instalado e confere se os hooks gravaram o registro. Precisa de um Claude Code logado, então é para a máquina de quem desenvolve, não para o CI.
-- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `damage.ts` (arquivos, linhas e comandos que deram certo), `compactions.ts` (compactações e o toast de descanso), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `gold.ts` (ouro por classe), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`, `schemes.ts` (esquemas de cores dos medidores), `choices.ts` (escolhas nomeadas guardadas entre sessões). Só `register.tsx` e `render.tsx` falam com o engine.
+- Toda a lógica está em módulos puros pequenos e testados: `classify.ts` (quem está em cena), `guild.ts` (estados de animação e o bug), `counters.ts` (combo, bugs derrotados e a linha de contadores), `damage.ts` (arquivos, linhas e comandos que deram certo), `compactions.ts` (compactações e o toast de descanso), `forecast.ts` (quando as janelas de uso se esgotam), `xp.ts` (XP e níveis), `lifetime.ts` (totais vitalícios entre sessões e `/guild stats`), `tracker.ts` (tudo o que a guilda lembra), `view.ts` (o que a banda mostra), `doing.ts` (verbos e alvos da linha), `layout.ts`, `raster.ts` (sprite → células de meio-bloco), `gold.ts` (ouro por classe), `tokens.ts` (tokens, taxa do cache e números abreviados), `demo.ts`, `schemes.ts` (esquemas de cores dos medidores), `choices.ts` (escolhas nomeadas guardadas entre sessões). Só `register.tsx` e `render.tsx` falam com o engine.
 - O mod roda sem Node nem DOM, então não decodifica PNG. O `scripts/build-sprites.mjs` lê a exportação do Aseprite em `art/` e grava os quadros como dados (`hooks/sprites.generated.ts`), com uma versão em meio tamanho de cada um para os personagens pequenos.
 - A arte foi feita no Aseprite (quadros de 32×32, uma paleta compartilhada de 21 cores).
 

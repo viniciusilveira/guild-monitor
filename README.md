@@ -92,6 +92,34 @@ operation XP = 2  +  min(seconds / 2, 4)  +  min(lines written / 20, 4)      (10
 
 Level `n` starts at `40 × (n − 1)²` XP: level 2 at 40, level 3 at 160, level 4 at 360, level 5 at 640. XP is saved in the plugin store (`guild.v1`) and survives restarts. A toast announces each new level.
 
+## Lifetime totals
+
+XP is not the only thing that survives a restart: the guild also keeps your **totals across sessions**, in a record of its own (`guild.lifetime.v1`), separate from the XP so a failed read of one never wipes the other. `/guild stats` prints them:
+
+```
+Totais da guilda (só nesta máquina)
+Primeiro dia: 01/10/2026
+Último dia: 20/10/2026
+Dias de uso: 12
+Sequência: 3 dias (melhor: 7)
+Tarefas: 41
+  Mago: 10
+  Guerreiro: 25
+  Explorador: 6
+Bugs derrotados: 9
+Melhor combo: x14
+Operações: 812
+Tempo total: 14h05
+Compactações: 3
+```
+
+- **What is counted.** Tasks are turns the main agent answered, by the class that was on stage (the same turns that pay the +3 XP); operations are the main agent's tool calls that finished, with or without error (refused and rejected ones are not operations); bugs defeated and the best combo are the ones of the combo feature, carried across sessions; total time is the sum of the turns' durations as the engine reports them; compactions are the main agent's, counted as above.
+- **Days and streak.** A day is **your local day**. The first use of a day adds one day of use and extends the streak when you also used the previous day; skipping a whole day starts the streak over at 1 and keeps the best one. Before your next use, a broken streak shows as `0 dias`.
+- **Privacy.** Only counters and dates reach the store: never prompts, replies, commands, paths (or fingerprints of them) or task text. The totals are local to each machine; there is no sync.
+- **Writes.** They are batched, at most one every 5 seconds, and whatever is pending is written when the session ends, so nothing is lost on restart.
+- **Defensive reading.** A missing or tampered field starts from zero and the others are kept. A record with a version newer than the plugin knows is read but never overwritten, and a store that cannot be read is not written either, so an older plugin never erases newer data.
+- **`/guild stats reset`** zeroes the totals (including the first and last day) and says so. It does **not** touch the XP or the levels.
+
 ## The bug
 
 When a tool call fails, the bug appears under the active character's stats. A later successful call **of the same kind** defeats it (for shell commands, the same program and subcommand: `npm test`, `git push`; for other tools, the same tool). If no such call comes, the bug leaves on its own after **2 minutes without a new tool error**; a new error restarts that count. Calls refused by a permission or a hook, and the ones **you reject yourself** (a declined plan, a denied permission, an interrupted question), are not failures: they raise no bug, defeat no live bug and pay no XP. In `/guild trace` they show as `RECUSADA`, not `ERRO`. Spotting a rejection is best effort: a rejected plan or question is always recognized, but for the other tools it relies on the refusal text of the engine, which can change between versions, and a shell command you interrupt while it runs still raises a bug.
@@ -127,7 +155,7 @@ The side panel has a line of counters above the gold split and the session and t
 - **Damage dealt.** After the bugs the line shows the material result of the work, for example `bugs 3 · 3 arquivos · 142 linhas · 8 comandos`: the **distinct files** edited (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`; the same file edited again counts once), the **lines** written (the same value that feeds the XP) and the **shell commands** run. Only operations that worked count, by the same rule as the XP. The three are hidden while all are zero. Of the files only a short fingerprint is kept in memory, never the path, and only the last 1000 distinct ones.
 - **Compactions.** Each time the main agent compacts the context (your `/compact` or the automatic one) the line ends with `1 compactação`, `2 compactações`, and nothing while there are none. Compactions by subagents, vetoed ones and the engine's `precompute` are not counted. The segment is the first to go on a narrow panel: in the short form (`2 compact.`) and then dropped, before the damage.
 - **Rest toast.** Compacting recovers stamina, so the guild announces it: `A guilda descansou: ST recuperada de 12% para 64%`. The compaction event does not carry the new percentage, so the toast appears when the next measurement arrives, with the stamina known before the compaction and the one measured after it. It is shown only when the stamina went up. For now the toast is always on (there is no `alerts` option yet).
-- **Memory only.** Nothing is saved to the store or the `/guild trace` log, no toast carries a path or a count (the rest toast only has the two percentages), and everything starts over with the session. Lifetime totals are a separate feature.
+- **Memory only.** Nothing is saved to the store or the `/guild trace` log, no toast carries a path or a count (the rest toast only has the two percentages), and everything starts over with the session. The lifetime totals are a separate record: see *Lifetime totals*.
 - **Bottom band.** It does not show the counters, so the compact band's 8 lines still hold.
 - **Demo scenes.** All of them show made-up values, `combo x7 · melhor x9 · bugs 3`; the `bug` scene has just lost its combo and shows `melhor x9 · bugs 3`.
 
@@ -223,6 +251,7 @@ It opens by itself from 144 columns (110 once you opened it yourself), unless yo
 | `/guild panel` | open the side panel and keep opening it |
 | `/guild bar` | close the panel and go back to the bottom band |
 | `/guild trace [N\|clear]` | print the record of the last N tool calls (default 20): who was on screen, who got the XP (`ERRO` marks a failure, `RECUSADA` a call you rejected), and a summary; `clear` erases it. Only tool names, classes and the program name of a shell command are kept, never prompts, paths, arguments or variables |
+| `/guild stats [reset]` | print the lifetime totals (days, streak, tasks per class, bugs, best combo, operations, time, compactions); `reset` zeroes them and leaves the XP and levels alone |
 | `/guild meters [name]` | switch the meters' color scheme (`padrao`, `contraste`, `daltonico`) at once and keep it for the next sessions; without a name, list the schemes |
 | `/guild <scene>` | show a demo scene (`explorador`, `mago`, `guerreiro`, `bug`, `cansado`, `dormindo`, `esquema-padrao`, `esquema-contraste`, `esquema-daltonico`); `/guild off` returns to the real session |
 
@@ -315,7 +344,7 @@ node scripts/build-sprites.mjs   # rebuild hooks/sprites.generated.ts from art/
 
 - `.claude-plugin/types/` holds the Claude Code type declarations, which the engine writes there when it loads the plugin as a mod. It is git-ignored; `tsc -p .` needs it, so `scripts/verify` stops with a message when it is missing (CI sets `VERIFY_SKIP_TYPES=1` and skips the type check).
 - `scripts/engine-check` runs one short `claude -p` session with the installed plugin and checks that its hooks wrote the trace log. It needs a logged-in Claude Code, so it is for a developer machine, not for CI.
-- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `damage.ts` (files, lines and commands that worked), `compactions.ts` (compactions and the rest toast), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `gold.ts` (gold split by class), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`, `schemes.ts` (color schemes of the meters), `choices.ts` (named choices saved between sessions). Only `register.tsx` and `render.tsx` talk to the engine.
+- All the logic is in small pure modules with tests: `classify.ts` (who is on stage), `guild.ts` (animation states and the bug), `counters.ts` (combo and defeated bugs, and the counters line), `damage.ts` (files, lines and commands that worked), `compactions.ts` (compactions and the rest toast), `forecast.ts` (when the usage windows run out), `xp.ts` (XP and levels), `lifetime.ts` (lifetime totals between sessions and `/guild stats`), `tracker.ts` (everything the guild remembers), `view.ts` (what the band shows), `doing.ts` (verbs and targets of the line), `layout.ts`, `raster.ts` (sprite → half-block cells), `gold.ts` (gold split by class), `tokens.ts` (tokens, cache hit rate and abbreviated numbers), `demo.ts`, `schemes.ts` (color schemes of the meters), `choices.ts` (named choices saved between sessions). Only `register.tsx` and `render.tsx` talk to the engine.
 - The mod runs without Node or a DOM, so it cannot decode PNG. `scripts/build-sprites.mjs` reads the Aseprite export in `art/` and writes the frames as data (`hooks/sprites.generated.ts`), plus a half-size version of each one for the small characters.
 - The art was made in Aseprite (32×32 frames, one shared 21-color palette).
 
