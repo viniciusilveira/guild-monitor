@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { alertText, crossing, NO_METER, resetText } from './alerts'
+import { alertsOn, alertText, crossing, NO_METER, resetText } from './alerts'
 import type { Band, MeterAlert, Reading } from './alerts'
 import { compacted, createTracker, metersMeasured } from './tracker'
 import { emptyGuild } from './xp'
@@ -84,4 +84,26 @@ test('alerts C9: the stamina text reminds that /compact recovers it and has no r
   expect(alertText('st', 10, 9, '')).toBe('O Explorador está com o fôlego por um fio: 9%. /compact recupera')
   expect(alertText('st', 20, 18, '')).toBe('O Explorador está quase sem fôlego: 18%. /compact recupera')
   expect(alertText('st', 20, 18, '1h40')).toBe('O Explorador está quase sem fôlego: 18%. /compact recupera')
+})
+
+test('alerts C11 unit: only the exact word off turns the alerts off', async () => {
+  expect(alertsOn('off')).toBe(false)
+
+  for (const value of ['on', undefined, null, 'talvez', 'ON', 'Off', ' off', '', 0, 1, true, false, {}]) expect(alertsOn(value)).toBe(true)
+})
+
+test('alerts C8 days: days truncate, the 24 hour boundary, round days and the HP text of band 10', async () => {
+  const start = Date.parse(at('12:00'))
+  const after = (minutes: number) => resetText(new Date(start + minutes * 60_000).toISOString(), start)
+
+  // 3d 5h30min stays 3d 5h and 3d 23h59 stays 3d 23h: never rounded up to 24h or to the next day.
+  expect(after(3 * 1440 + 5 * 60 + 30)).toBe('3d 5h')
+  expect(after(3 * 1440 + 23 * 60 + 59)).toBe('3d 23h')
+  // Below 24 hours the hours and minutes stay; 24h00 is the first with days.
+  expect(after(23 * 60 + 59)).toBe('23h59')
+  expect(after(24 * 60)).toBe('1d')
+  // A round number of days has no hours.
+  expect(after(3 * 1440)).toBe('3d')
+
+  expect(alertText('hp', 10, 8, '3d 5h')).toBe('O Guerreiro está com a vida por um fio: 8%, reinicia em 3d 5h')
 })

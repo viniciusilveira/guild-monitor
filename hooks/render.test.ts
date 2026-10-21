@@ -2608,13 +2608,57 @@ for (const scene of [...DEMO_SCENES, ...SCHEME_SCENES]) {
   })
 }
 
-test('alerts C13 e2e: the store and the trace carry no warning state and the toasts no path, prompt or command', { options: { layout: 'bar' } }, async ($, on) => {
-  const writes: string[] = []
+// The window of a meter turning over, through the engine: the reset time travels from the session figures to the detector.
+const windowCase = (name: string, meter: 'hp' | 'mp') => {
+  const made = (used: number, minutes: number): Limit => (meter === 'hp' ? seven(used, minutes) : five(used, minutes))
+  const base = meter === 'hp' ? 6 * 24 * 60 : 300
+  const word = meter === 'hp' ? 'vida' : 'mana'
+
+  test(`alerts C4 e2e ${name}: the same reading does not repeat, a window that resets by 5 minutes or more warns again, one by less does not`, { options: { layout: 'bar' } }, async ($, on) => {
+    const toasts: string[] = []
+    nextFast = true
+    await setup($, on, () => false, () => undefined, toastsStore(toasts))
+    await measureAll($, 30, [made(85, base)])
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]).toContain(`quase sem ${word}: 15%`)
+
+    await measureAll($, 30, [made(85, base)])
+    expect(toasts).toHaveLength(1)
+
+    // The reset moves 4 minutes: still the same window.
+    await measureAll($, 30, [made(85, base + 4)])
+    expect(toasts).toHaveLength(1)
+
+    // The reset moves 10 minutes: a new window, and the same 15% warns again.
+    await measureAll($, 30, [made(85, base + 10)])
+    expect(toasts).toHaveLength(2)
+    expect(toasts[1]).toContain(`quase sem ${word}: 15%`)
+
+    await measureAll($, 30, [made(85, base + 10)])
+    expect(toasts).toHaveLength(2)
+  })
+}
+
+windowCase('hp', 'hp')
+windowCase('mp', 'mp')
+
+// What the plugin wrote before this feature, key by key: any new key, field or kind of value written after a session
+// that warned fails here, whatever its name.
+const STORE_KEYS = ['guild.v1', 'guild.trace.v1']
+const GUILD_FIELDS = ['mago', 'guerreiro', 'explorador', 'xp']
+const TRACE_FIELDS = ['at', 'what', 'tool', 'program', 'kind', 'shown', 'paid', 'planMode', 'isError', 'rejected']
+const TRACE_TOOLS = ['início (palpite do prompt)', 'Bash', 'Edit']
+
+const fieldsOf = (value: unknown): string[] =>
+  typeof value !== 'object' || value === null ? [] : Object.entries(value).flatMap(([key, inner]) => [key, ...fieldsOf(inner)])
+
+test('alerts C13 e2e: after warnings, a re-arm and a compaction the store and the trace hold exactly what they held before', { options: { layout: 'bar' } }, async ($, on) => {
+  const writes: Array<[string, unknown]> = []
   const toasts: string[] = []
   const store = (on: On) => {
     on('store.get', async () => ({ value: undefined }) as never)
     on('store.set', async (_$, e) => {
-      writes.push(JSON.stringify([e.key, e.value]))
+      writes.push([e.key, JSON.parse(JSON.stringify(e.value))])
 
       return { value: undefined } as never
     })
@@ -2632,10 +2676,37 @@ test('alerts C13 e2e: the store and the trace carry no warning state and the toa
   await call($, 'Bash', { command: 'cat /Users/me/segredo/chave.txt' })
   await call($, 'Edit', { file_path: '/Users/me/segredo/a.ts', old_string: 'a', new_string: 'b' })
   await measureAll($, 91, [five(92), seven(95)])
+  expect(toasts).toHaveLength(3)
+
+  // Re-armed by recovering, warned again, then a compaction and the stamina warned a third time.
+  nextLimits = [five(10), seven(10)]
+  nextContext = 20
+  await measureAll($, 20, [five(10), seven(10)])
+  nextLimits = [five(92), seven(95)]
+  nextContext = 91
+  await measureAll($, 91, [five(92), seven(95)])
+  await compact($)
+  await measureAll($, 91, [five(92), seven(95)])
+  expect(toasts.length).toBeGreaterThanOrEqual(7)
+  await call($, 'Edit', { file_path: '/Users/me/segredo/a.ts', old_string: 'b', new_string: 'c' })
+
+  expect(writes.length).toBeGreaterThan(0)
+  expect([...new Set(writes.map(([key]) => key))].sort()).toEqual([...STORE_KEYS].sort())
+
+  const allowed = new Set([...GUILD_FIELDS, ...TRACE_FIELDS])
+  for (const [key, value] of writes) {
+    expect(fieldsOf(value).filter(field => !allowed.has(field) && !/^\d+$/.test(field))).toEqual([])
+    if (key === 'guild.v1') expect(Object.keys(value as object).sort()).toEqual(['explorador', 'guerreiro', 'mago'])
+    if (key === 'guild.trace.v1') {
+      for (const entry of value as Array<Record<string, unknown>>) {
+        expect(['turn', 'tool', 'mode']).toContain(entry.what)
+        expect(TRACE_TOOLS).toContain(entry.tool)
+        expect(Object.keys(entry).filter(field => !TRACE_FIELDS.includes(field))).toEqual([])
+      }
+    }
+  }
 
   const trace = ((await $.command.run({ command: 'guild', args: 'trace' } as never)) as { text: string }).text
-  expect(toasts).toHaveLength(3)
-  expect(writes.length).toBeGreaterThan(0)
-  expect([...writes, trace].join('\n')).not.toMatch(/fôlego|mana|vida|alert|warned|compact|por um fio|quase sem/)
+  expect(trace).not.toMatch(/segredo|Users/)
   expect(toasts.join('\n')).not.toMatch(/segredo|Users|chave|Bash|Edit|cat /)
 })

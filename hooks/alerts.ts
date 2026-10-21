@@ -11,6 +11,9 @@ const BANDS: readonly Band[] = [10, 20]
 // A band warns again only after the value goes back above it by this many points (so 25 for band 20, 15 for band 10).
 export const REARM_POINTS = 5
 
+// The `alerts` option: off only for the exact word `off`; anything else (missing, unknown, another case) counts as on.
+export const alertsOn = (value: unknown): boolean => value !== 'off'
+
 export type MeterId = 'hp' | 'mp' | 'st'
 
 // A meter in percent left. `value` is null when the engine has none (rate limits off a subscription).
@@ -67,7 +70,7 @@ export const resetText = (resetsAt: string | null, now: number): string => {
   if (minutes < 24 * 60) return untilReset(resetsAt, now)
 
   const days = Math.floor(minutes / 1440)
-  const hours = Math.round((minutes - days * 1440) / 60)
+  const hours = Math.floor((minutes - days * 1440) / 60)
 
   return hours === 0 ? `${days}d` : `${days}d ${hours}h`
 }

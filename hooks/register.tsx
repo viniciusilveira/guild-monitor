@@ -4,7 +4,7 @@ import type { CoreEngineInterface, Register, StateDollar } from 'claude-code'
 import type { ViewModel } from '../types'
 import type { TaskClass, ToolUse } from './classify'
 import { classOf, kindOf, linesWritten } from './classify'
-import { alertText, resetText } from './alerts'
+import { alertsOn, alertText, resetText } from './alerts'
 import { compactionToast, countsAsCompaction } from './compactions'
 import { fileOf } from './damage'
 import { targetOf } from './doing'
@@ -166,7 +166,7 @@ export const register: Register = (on, options) => {
   const showForecast = options.showForecast !== 'off'
   // The toasts of the guild (a meter running low, the rest after a compaction): on unless the person turned them off
   // (anything else counts as on).
-  const showAlerts = options.alerts !== 'off'
+  const showAlerts = alertsOn(options.alerts)
   const layoutMode = options.layout === 'bar' || options.layout === 'panel' ? options.layout : 'auto'
   // A demo scene shows made-up figures and ignores the session.
   let scene = sceneOf(options.demo)
