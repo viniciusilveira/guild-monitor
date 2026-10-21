@@ -7,6 +7,7 @@ import {
   emptyLifetime,
   LIFETIME_KEY,
   parseLifetime,
+  resetRefusedText,
   resetText,
   statsRequest,
   statsText,
@@ -375,4 +376,70 @@ test('lifetime C15: an unknown stats argument changes nothing', async () => {
   expect(statsRequest('statsx')).toBe(undefined)
   expect(statsRequest('panel')).toBe(undefined)
   expect(statsRequest('')).toBe(undefined)
+})
+
+test('lifetime C1b: each counter is read on its own, whatever is wrong with its neighbors', async () => {
+  const bad: unknown[] = [-5, Number.NaN, Infinity, 'muitos', null, [], {}, true, 1e300, Number.MAX_SAFE_INTEGER + 2]
+  const counters = ['bugs', 'operations', 'compactions', 'bestCombo', 'timeMs', 'days', 'streak', 'bestStreak'] as const
+
+  for (const field of counters) {
+    for (const value of bad) {
+      // The one field is wrong; every other field of the record is valid and must stay as it was.
+      const read = parseLifetime({ ...full, [field]: value })
+      expect(read[field], `${field} = ${String(value)}`).toBe(field === 'bestStreak' ? Math.max(0, full.streak) : 0)
+      for (const other of counters.filter(name => name !== field && !(field === 'streak' && name === 'bestStreak'))) {
+        expect(read[other], `${other} next to a bad ${field}`).toBe(full[other])
+      }
+      expect(read.tasks).toEqual(full.tasks)
+      expect(read.firstDay).toBe(full.firstDay)
+    }
+  }
+
+  expect(parseLifetime({ ...full, bugs: 4.9, operations: 7.1, compactions: 0.9 })).toMatchObject({ bugs: 4, operations: 7, compactions: 0 })
+})
+
+test('lifetime C1c: tasks that are not an object, or have a bad class, keep what is valid', async () => {
+  for (const tasks of ['texto', [1, 2, 3], null, 7, true, undefined]) {
+    const read = parseLifetime({ ...full, tasks })
+    expect(read.tasks, String(tasks)).toEqual({ mago: 0, guerreiro: 0, explorador: 0 })
+    expect(read.bugs).toBe(full.bugs)
+    expect(read.operations).toBe(full.operations)
+  }
+
+  expect(parseLifetime({ ...full, tasks: { mago: 'x', guerreiro: -1, explorador: 3.8, intruso: 9 } }).tasks).toEqual({ mago: 0, guerreiro: 0, explorador: 3 })
+  expect(Object.keys(parseLifetime({ ...full, tasks: { intruso: 9 } }).tasks).sort()).toEqual(['explorador', 'guerreiro', 'mago'])
+  expect(Object.keys(parseLifetime({ ...full, intruso: 1 })).sort()).toEqual(Object.keys(full).sort())
+})
+
+test('lifetime C1d: a tampered version stays writable, a newer one is read-only', async () => {
+  for (const version of [undefined, 'dois', -1, 0, Number.NaN, null, [], 1.9]) {
+    const store = fakeStore({ [LIFETIME_KEY]: { ...full, version } })
+    const keeper = await keeperOn(store)
+
+    expect(keeper.current().bugs, String(version)).toBe(full.bugs)
+    await keeper.record({ kind: 'compaction' }, at(21))
+    await keeper.flush(at(21), true)
+    expect(store.writes.length, String(version)).toBe(1)
+    // What is written is the current version, whatever was stored.
+    expect((store.writes[0]?.value as Lifetime).version).toBe(1)
+    expect((store.writes[0]?.value as Lifetime).compactions).toBe(full.compactions + 1)
+  }
+
+  for (const version of [2, 2.5, 99, 1e9]) {
+    const store = fakeStore({ [LIFETIME_KEY]: { ...full, version } })
+    const keeper = await keeperOn(store)
+
+    expect(keeper.current().bugs).toBe(full.bugs)
+    await keeper.record({ kind: 'compaction' }, at(21))
+    await keeper.flush(at(21), true)
+    expect(store.writes.length, String(version)).toBe(0)
+  }
+})
+
+test('lifetime C11b: the refusal to reset says why in Portuguese within 40 columns', async () => {
+  const text = resetRefusedText()
+
+  expect(text).toContain('Não zerei os totais')
+  expect(text).toContain('Nada foi alterado')
+  for (const line of text.split('\n')) expect(line.length, line).toBeLessThanOrEqual(40)
 })
