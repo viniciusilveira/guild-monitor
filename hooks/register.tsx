@@ -15,6 +15,8 @@ import type { Settings } from './guild'
 import { DEFAULTS, isRejection } from './guild'
 import type { Size } from './layout'
 import { chooseLayout } from './layout'
+import type { Keeper, LifetimeEvent } from './lifetime'
+import { createKeeper, emptyLifetime, resetRefusedText, resetText, STATS_USAGE, statsRequest, statsText } from './lifetime'
 import { chooseSidebarLayout } from './sidebar'
 import { encodeFrame } from './raster'
 import { bandTree, sidebarTree } from './render'
@@ -185,6 +187,20 @@ export const register: Register = (on, options) => {
 
   const cache: PublishCache = { signature: '' }
 
+  // The lifetime totals, in a record of their own (`guild.lifetime.v1`): counters and dates only. The monitor only
+  // watches, so a failure here never reaches the tool call or the turn.
+  let keeper: Keeper | undefined
+  const noteLifetime = async (event: LifetimeEvent, now: number): Promise<boolean> => {
+    try {
+      await keeper?.record(event, now)
+
+      return true
+    } catch {
+      // Lost for this event only.
+      return false
+    }
+  }
+
   const stateAt = (now: number): { tracker: Tracker; usage: Usage; history: History } =>
     scene === undefined ? { tracker, usage, history } : demoState(scene, now, settings)
 
@@ -212,7 +228,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'guild',
       description: 'Abre ou fecha o painel lateral da guilda, troca o esquema de cores dos medidores e mostra cenas de demonstração',
-      argumentHint: `[panel|bar|trace|meters [${METER_CHOICES.names.join('|')}]|${[...SCENES, ...SCHEME_SCENES].join('|')}|off]`,
+      argumentHint: `[panel|bar|trace|stats [reset]|meters [${METER_CHOICES.names.join('|')}]|${[...SCENES, ...SCHEME_SCENES].join('|')}|off]`,
     })
     const startedAt = await $.clock.now()
     tracker = createTracker(parseGuild(await $.store.get(STORE_KEY)), startedAt)
@@ -221,6 +237,8 @@ export const register: Register = (on, options) => {
     history = EMPTY_HISTORY
     record(first, startedAt)
     trace = parseTrace(await $.store.get(TRACE_KEY))
+    keeper = createKeeper({ get: key => $.store.get(key), set: (key, value) => $.store.set(key, value) })
+    await keeper.load()
     isReady = true
     cache.signature = ''
 
@@ -241,6 +259,8 @@ export const register: Register = (on, options) => {
       try {
         const now = await $.clock.now()
         tracker = tick(tracker, now)
+        // What the window of writes held back goes out as soon as the window opens.
+        await keeper?.flush(now).catch(() => undefined)
 
         if (now >= nextUsageAt) {
           nextUsageAt = now + USAGE_EVERY_MS
@@ -291,6 +311,22 @@ export const register: Register = (on, options) => {
       return { text: opened.isPlaced ? 'Painel aberto' : `Sem espaço para o painel: ${opened.reason}` }
     }
 
+    const stats = statsRequest(e.args)
+
+    if (stats === 'invalid') return { text: STATS_USAGE }
+
+    if (stats === 'reset') {
+      const done = await keeper?.reset(await $.clock.now())
+
+      return { text: done === true ? resetText() : resetRefusedText() }
+    }
+
+    if (stats === 'show') {
+      const now = await $.clock.now()
+
+      return { text: statsText(keeper?.current() ?? emptyLifetime(), keeper?.dayAt(now) ?? '') }
+    }
+
     if (word === 'trace' || word.startsWith('trace ')) {
       const arg = word.slice('trace'.length).trim()
 
@@ -331,7 +367,7 @@ export const register: Register = (on, options) => {
 
     const choice = choiceOf(e.args)
 
-    if (choice.kind === 'unknown') return { text: `Use /guild panel | bar | trace [N|clear] | meters [${METER_CHOICES.names.join('|')}] | ${[...SCENES, ...SCHEME_SCENES].join(' | ')} | off` }
+    if (choice.kind === 'unknown') return { text: `Use /guild panel | bar | trace [N|clear] | stats [reset] | meters [${METER_CHOICES.names.join('|')}] | ${[...SCENES, ...SCHEME_SCENES].join(' | ')} | off` }
 
     scene = choice.kind === 'scene' ? choice.scene : undefined
 
@@ -389,6 +425,7 @@ export const register: Register = (on, options) => {
       } else {
         const finishedAt = await $.clock.now()
         const rejected = isRejection({ tool: use.tool, isError: ran.isError === true, text: ran.text })
+        const bugsBefore = tracker.counters.bugs
         const done = toolFinished(tracker, {
           use,
           isError: ran.isError === true,
@@ -397,6 +434,7 @@ export const register: Register = (on, options) => {
           durationMs: finishedAt - startedAt,
         })
         tracker = done.tracker
+        if (!rejected) await noteLifetime({ kind: 'operation', defeated: tracker.counters.bugs > bugsBefore, bestCombo: tracker.counters.best }, finishedAt)
         trace = appendTrace(trace, {
           at: finishedAt,
           what: 'tool',
@@ -437,6 +475,8 @@ export const register: Register = (on, options) => {
     await publishView($, viewOf(tracker, usage, now), cache)
 
     await applyGain($, tracker, done.gain)
+    // An answered turn is a task of the class that answered it; every turn adds its time.
+    await noteLifetime({ kind: 'turn', cls: done.gain?.cls ?? null, durationMs: e.durationMs }, now)
 
     return next(e)
   })
@@ -463,6 +503,7 @@ export const register: Register = (on, options) => {
     try {
       if (scene === undefined && countsAsCompaction({ trigger: e.trigger, agentId: e.agentId, skipped: result.skip !== undefined })) {
         tracker = compacted(tracker, before)
+        await noteLifetime({ kind: 'compaction' }, await $.clock.now())
         await publishQuietly($, async () => viewOf(tracker, usage, await $.clock.now()), cache)
       }
     } catch {
@@ -470,6 +511,18 @@ export const register: Register = (on, options) => {
     }
 
     return result
+  })
+
+  // The totals still held back by the window of writes go out before the session closes.
+  on('session.end', async ($, e, next) => {
+    try {
+      await keeper?.flush(await $.clock.now(), true)
+    } catch {
+      // The monitor only watches: the session ends as it would without the totals.
+      return next(e)
+    }
+
+    return next(e)
   })
 
   // The footer's mode labels are the only place the engine says plan mode is on.
