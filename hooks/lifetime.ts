@@ -74,7 +74,13 @@ const dayNumber = (day: string): number | null => {
 export const dayOf = (ms: number, offsetMinutes: number = new Date(ms).getTimezoneOffset()): string =>
   new Date(ms - offsetMinutes * 60_000).toISOString().slice(0, 10)
 
-const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0)
+// A counter that is a sane number: a whole, non-negative value that sums without losing digits (anything else, a
+// huge figure included, is as tampered as a text and starts from zero).
+const count = (value: unknown): number => {
+  const whole = typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
+
+  return Number.isSafeInteger(whole) ? whole : 0
+}
 
 const dayOrNull = (value: unknown): string | null => (typeof value === 'string' && dayNumber(value) !== null ? value : null)
 
