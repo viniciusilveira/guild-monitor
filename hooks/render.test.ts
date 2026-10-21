@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { SCENES as DEMO_SCENES } from './demo'
-import { resetRefusedText } from './lifetime'
+import { dayOf, resetRefusedText } from './lifetime'
 import { METER_SCHEMES, SCHEMES } from './schemes'
 import { COLORS, URGENT_COLOR } from './view'
 
@@ -2781,4 +2781,22 @@ test('lifetime e2e: nothing a turn carries (prompt, path, command, answer) reach
   for (const record of records) walk(record, 'registro')
   expect(JSON.stringify(records)).not.toMatch(/sentinela|segredo|hunter2|admin|https|curl|home|arquivo|\.ts/)
   expect(records.at(-1)).toMatchObject({ operations: 3, compactions: 1, tasks: { guerreiro: 1 }, timeMs: 2_000 })
+})
+
+test('lifetime e2e: the streak shown is the one saved while it is alive (today or yesterday) and zero once a day was skipped', { options: { layout: 'bar' } }, async ($, on) => {
+  const DAY_MS = 86_400_000
+  const saved = (lastDay: string) => ({ version: 1, firstDay: '1960-01-01', lastDay, days: 9, streak: 3, bestStreak: 5, tasks: { mago: 0, guerreiro: 1, explorador: 0 }, bugs: 0, bestCombo: 0, operations: 4, timeMs: 1_000, compactions: 0 })
+  // The injected clock answers START; the day is the machine's local day of that instant, as the plugin reads it.
+  const today = dayOf(START)
+  const world = lifetimeWorld(saved(today))
+  await lifetimeSetup($, on, world)
+  expect(await statsOf($)).toContain('Sequência: 3 dias (melhor: 5)')
+
+  world.stored.set('guild.lifetime.v1', saved(dayOf(START - DAY_MS)))
+  await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
+  expect(await statsOf($)).toContain('Sequência: 3 dias (melhor: 5)')
+
+  world.stored.set('guild.lifetime.v1', saved(dayOf(START - 2 * DAY_MS)))
+  await $.session.start({ cwd: '/tmp', surface: 'terminal' } as never)
+  expect(await statsOf($)).toContain('Sequência: 0 dias (melhor: 5)')
 })
