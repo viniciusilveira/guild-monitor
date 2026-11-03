@@ -36,6 +36,11 @@ const fakeStore = (initial: Record<string, unknown> = {}) => {
   }
 }
 
+// Lets what is already running go as far as it can without the store answering.
+const settle = async () => {
+  for (let step = 0; step < 20; step += 1) await Promise.resolve()
+}
+
 const keeperOn = async (store: ReturnType<typeof fakeStore>, offset: (ms: number) => number = () => 0) => {
   const keeper = createKeeper(store, { offsetMinutes: offset })
   await keeper.load()
@@ -334,6 +339,104 @@ test('lifetime C10b: an event that arrives during a write is not lost at the end
   await writing
   await keeper.flush(start + 200, true)
 
+  expect(store.data.get(LIFETIME_KEY)).toMatchObject({ operations: 2 })
+})
+
+test('lifetime C10c: the end of the session waits for a write in flight', async () => {
+  const store = fakeStore()
+  let release = () => {}
+  const held = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const keeper = createKeeper({
+    get: store.get,
+    set: async (key, value) => {
+      await held
+      await store.set(key, value)
+    },
+  })
+  await keeper.load()
+  const start = at(20)
+
+  const writing = keeper.record({ kind: 'operation', defeated: false, bestCombo: 1 }, start)
+  await settle()
+  let isFlushed = false
+  const flushing = keeper.flush(start + 100, true).then(() => {
+    isFlushed = true
+  })
+  await settle()
+  expect(isFlushed).toBe(false)
+
+  release()
+  await writing
+  await flushing
+  expect(store.data.get(LIFETIME_KEY)).toMatchObject({ operations: 1 })
+  expect(store.writes.length).toBe(1)
+})
+
+test('lifetime C10d: the end of the session writes again what a write in flight failed to save', async () => {
+  const store = fakeStore()
+  let fail = () => {}
+  const failing = new Promise<void>((_, reject) => {
+    fail = () => reject(new Error('sem espaço'))
+  })
+  let calls = 0
+  const keeper = createKeeper({
+    get: store.get,
+    set: async (key, value) => {
+      calls += 1
+      if (calls === 1) await failing
+      await store.set(key, value)
+    },
+  })
+  await keeper.load()
+  const start = at(20)
+
+  const writing = keeper.record({ kind: 'operation', defeated: false, bestCombo: 1 }, start)
+  await settle()
+  const flushing = keeper.flush(start + 100, true)
+  fail()
+  await writing
+  await flushing
+
+  expect(calls).toBe(2)
+  expect(store.data.get(LIFETIME_KEY)).toMatchObject({ operations: 1 })
+})
+
+test('lifetime C10e: writes never overlap, the last one to reach the store is the newest', async () => {
+  const store = fakeStore()
+  const releases: Array<() => void> = []
+  let inFlight = 0
+  let mostInFlight = 0
+  const keeper = createKeeper({
+    get: store.get,
+    set: async (key, value) => {
+      inFlight += 1
+      mostInFlight = Math.max(mostInFlight, inFlight)
+      const copy = JSON.parse(JSON.stringify(value))
+      await new Promise<void>(resolve => releases.push(resolve))
+      await store.set(key, copy)
+      inFlight -= 1
+    },
+  })
+  await keeper.load()
+  const start = at(20)
+  const event = { kind: 'operation', defeated: false, bestCombo: 1 } as const
+
+  const first = keeper.record(event, start)
+  await settle()
+  await keeper.record(event, start + 100)
+  const flushing = keeper.flush(start + 200, true)
+  await settle()
+  expect(mostInFlight).toBe(1)
+
+  releases[0]?.()
+  await first
+  await settle()
+  releases[1]?.()
+  await flushing
+
+  expect(mostInFlight).toBe(1)
   expect(store.data.get(LIFETIME_KEY)).toMatchObject({ operations: 2 })
 })
 

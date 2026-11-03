@@ -247,14 +247,14 @@ export const createKeeper = (store: Store, options: { offsetMinutes?: (ms: numbe
   let isWritable = true
   let isDirty = false
   let lastWriteAt: number | null = null
+  let writing = Promise.resolve()
 
   const dayAt = (now: number): string => dayOf(now, options.offsetMinutes?.(now))
 
-  const flush = async (now: number, force = false): Promise<void> => {
-    if (!isWritable || !isDirty) return
-    if (!force && lastWriteAt !== null && now - lastWriteAt < WRITE_EVERY_MS) return
+  // Writes go one at a time, each with what is pending when its turn comes.
+  const write = async (): Promise<void> => {
+    if (!isDirty) return
 
-    lastWriteAt = now
     // Before the write, so an event that arrives during it stays pending.
     isDirty = false
     try {
@@ -263,6 +263,15 @@ export const createKeeper = (store: Store, options: { offsetMinutes?: (ms: numbe
       // The totals stay pending: the next window tries again.
       isDirty = true
     }
+  }
+
+  const flush = async (now: number, force = false): Promise<void> => {
+    if (!isWritable) return
+    if (!force && (!isDirty || (lastWriteAt !== null && now - lastWriteAt < WRITE_EVERY_MS))) return
+
+    if (isDirty) lastWriteAt = now
+    writing = writing.then(write)
+    await writing
   }
 
   return {

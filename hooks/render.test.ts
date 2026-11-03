@@ -2707,7 +2707,7 @@ const windowCase = (name: string, meter: 'hp' | 'mp') => {
 windowCase('hp', 'hp')
 windowCase('mp', 'mp')
 
-// What the plugin wrote before this feature, key by key: any new key, field or kind of value written after a session
+// What the plugin writes, key by key: any new key, field or kind of value written after a session
 // that warned fails here, whatever its name.
 const STORE_KEYS = ['guild.v1', 'guild.trace.v1', 'guild.lifetime.v1']
 const GUILD_FIELDS = ['mago', 'guerreiro', 'explorador', 'xp']
@@ -2837,6 +2837,7 @@ test('lifetime e2e: what happens while a demo scene is on stage counts nothing',
   await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
   await call($, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 90_000 } as never)
+  await compact($)
 
   expect(await statsOf($)).toContain('Ainda sem totais')
 })
