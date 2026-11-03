@@ -255,9 +255,10 @@ export const createKeeper = (store: Store, options: { offsetMinutes?: (ms: numbe
     if (!force && lastWriteAt !== null && now - lastWriteAt < WRITE_EVERY_MS) return
 
     lastWriteAt = now
+    // Before the write, so an event that arrives during it stays pending.
+    isDirty = false
     try {
       await store.set(LIFETIME_KEY, lifetime)
-      isDirty = false
     } catch {
       // The totals stay pending: the next window tries again.
       isDirty = true

@@ -311,6 +311,32 @@ test('lifetime C10: the end of the session flushes what is pending', async () =>
   expect(next.current().timeMs).toBe(9_000)
 })
 
+test('lifetime C10b: an event that arrives during a write is not lost at the end of the session', async () => {
+  const store = fakeStore()
+  let release = () => {}
+  const held = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const keeper = createKeeper({
+    get: store.get,
+    set: async (key, value) => {
+      await held
+      await store.set(key, value)
+    },
+  })
+  await keeper.load()
+  const start = at(20)
+  const event = { kind: 'operation', defeated: false, bestCombo: 1 } as const
+
+  const writing = keeper.record(event, start)
+  await keeper.record(event, start + 100)
+  release()
+  await writing
+  await keeper.flush(start + 200, true)
+
+  expect(store.data.get(LIFETIME_KEY)).toMatchObject({ operations: 2 })
+})
+
 test('lifetime C11: an unreadable or newer record is never overwritten', async () => {
   const broken = fakeStore()
   broken.get = async () => {
