@@ -192,6 +192,38 @@ test('lifetime C5: the day is the local day', async () => {
   expect(total.bestStreak).toBe(1)
 })
 
+test('lifetime C5b: with no offset given, the day is the one of the machine', async () => {
+  // The test runner ignores `TZ` and freezes `Date.prototype`, so the machine's timezone is set by replacing `Date`:
+  // this way the test tells local from UTC on any machine, CI in UTC included.
+  const RealDate = Date
+  const machineAt = (offset: number) => {
+    globalThis.Date = class extends RealDate {
+      override getTimezoneOffset() {
+        return offset
+      }
+    } as DateConstructor
+  }
+
+  try {
+    // 01:30 UTC on the 20th is 22:30 on the 19th at UTC-3.
+    machineAt(180)
+    expect(dayOf(at(20, 1, 30))).toBe('2026-10-19')
+
+    // Built like `register.tsx` builds it, with no options.
+    const keeper = createKeeper(fakeStore())
+    await keeper.load()
+    await keeper.record({ kind: 'turn', cls: 'mago', durationMs: 1_000 }, at(20, 1, 30))
+    expect(keeper.current().firstDay).toBe('2026-10-19')
+    expect(keeper.dayAt(at(20, 1, 30))).toBe('2026-10-19')
+
+    // 20:00 UTC on the 19th is already 05:00 on the 20th at UTC+9.
+    machineAt(-540)
+    expect(dayOf(at(19, 20))).toBe('2026-10-20')
+  } finally {
+    globalThis.Date = RealDate
+  }
+})
+
 test('lifetime C6: a change of day extends the streak and the same day changes nothing', async () => {
   const store = fakeStore({ [LIFETIME_KEY]: { ...full, firstDay: '2026-10-17', lastDay: '2026-10-19', days: 3, streak: 3, bestStreak: 3 } })
   const keeper = await keeperOn(store, UTC_MINUS_3)
