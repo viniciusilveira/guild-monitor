@@ -2712,7 +2712,8 @@ windowCase('mp', 'mp')
 const STORE_KEYS = ['guild.v1', 'guild.trace.v1', 'guild.lifetime.v1']
 const GUILD_FIELDS = ['mago', 'guerreiro', 'explorador', 'xp']
 const TRACE_FIELDS = ['at', 'what', 'tool', 'program', 'kind', 'shown', 'paid', 'planMode', 'isError', 'rejected']
-const LIFETIME_FIELDS = ['version', 'firstDay', 'lastDay', 'days', 'streak', 'bestStreak', 'tasks', 'bugs', 'bestCombo', 'operations', 'timeMs', 'compactions']
+const LIFETIME_FIELDS = ['version', 'firstDay', 'lastDay', 'days', 'streak', 'bestStreak', 'tasks', 'mago', 'guerreiro', 'explorador', 'bugs', 'bestCombo', 'operations', 'timeMs', 'compactions']
+const FIELDS_OF_KEY: Record<string, string[]> = { 'guild.v1': GUILD_FIELDS, 'guild.trace.v1': TRACE_FIELDS, 'guild.lifetime.v1': LIFETIME_FIELDS }
 const TRACE_TOOLS = ['início (palpite do prompt)', 'Bash', 'Edit']
 
 const fieldsOf = (value: unknown): string[] =>
@@ -2760,9 +2761,9 @@ test('alerts C13 e2e: after warnings, a re-arm and a compaction the store and th
   expect(writes.length).toBeGreaterThan(0)
   expect([...new Set(writes.map(([key]) => key))].sort()).toEqual([...STORE_KEYS].sort())
 
-  const allowed = new Set([...GUILD_FIELDS, ...TRACE_FIELDS, ...LIFETIME_FIELDS])
   for (const [key, value] of writes) {
-    expect(fieldsOf(value).filter(field => !allowed.has(field) && !/^\d+$/.test(field))).toEqual([])
+    const allowed = FIELDS_OF_KEY[key] ?? []
+    expect(fieldsOf(value).filter(field => !allowed.includes(field) && !/^\d+$/.test(field))).toEqual([])
     if (key === 'guild.v1') expect(Object.keys(value as object).sort()).toEqual(['explorador', 'guerreiro', 'mago'])
     if (key === 'guild.trace.v1') {
       for (const entry of value as Array<Record<string, unknown>>) {
@@ -2814,6 +2815,30 @@ test('lifetime e2e: a turn is counted, shown by /guild stats and flushed at the 
   await $.session.end({ reason: 'other', sessionId: 's1' } as never)
   expect(lifetimeWrites.length).toBe(2)
   expect(stored.get('guild.lifetime.v1')).toMatchObject({ operations: 2, timeMs: 90_000, tasks: { guerreiro: 1 } })
+})
+
+test('lifetime e2e: the calls and the turns of a subagent count neither as operations, tasks nor time', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' })
+  await call($, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b', agentId: 'sub1' })
+  await $.turn.complete({ turnId: 's1', agentId: 'sub1', reason: 'answer', answer: 'feito', durationMs: 600_000 } as never)
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 90_000 } as never)
+
+  const text = await statsOf($)
+  expect(text).toContain('Operações: 1')
+  expect(text).toContain('Guerreiro: 1')
+  expect(text).toContain('Tempo total: 1min')
+})
+
+test('lifetime e2e: what happens while a demo scene is on stage counts nothing', { options: { layout: 'bar' } }, async ($, on) => {
+  await setup($, on)
+  await $.command.run({ command: 'guild', args: 'bug' } as never)
+  await $.turn.start({ text: 'conserte o teste', turnId: 't1' } as never)
+  await call($, 'Edit', { file_path: 'a.ts', old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'feito', durationMs: 90_000 } as never)
+
+  expect(await statsOf($)).toContain('Ainda sem totais')
 })
 
 test('lifetime e2e: a session that starts on saved totals keeps adding to them', { options: { layout: 'bar' } }, async ($, on) => {
