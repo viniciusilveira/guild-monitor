@@ -82,6 +82,11 @@ case "${1:-}" in
         grep -qF -- "$needle" "$file" || { echo "fail: $file does not mention $needle"; exit 1; }
       done
     done
+    for file in README.md README.pt-BR.md; do
+      for needle in '/guild stats' '/guild stats reset' 'guild.lifetime.v1'; do
+        grep -qF -- "$needle" "$file" || { echo "fail: $file does not mention $needle"; exit 1; }
+      done
+    done
     grep -qi 'color-blind' README.md || { echo "fail: README.md has no accessibility note"; exit 1; }
     grep -qi 'daltonismo' README.pt-BR.md || { echo "fail: README.pt-BR.md has no accessibility note"; exit 1; }
     ;;
