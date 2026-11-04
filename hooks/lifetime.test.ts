@@ -299,6 +299,30 @@ test('lifetime C9: writes are batched, at most one every 5 seconds', async () =>
   expect(store.writes.length).toBe(2)
 })
 
+test('lifetime C9c: only a write moves the window, forced or not', async () => {
+  const event = { kind: 'operation', defeated: false, bestCombo: 1 } as const
+  const start = at(20)
+
+  // A forced write counts: 4 seconds after it is still inside the window.
+  const written = fakeStore()
+  const afterWrite = await keeperOn(written)
+  await afterWrite.record(event, start)
+  await afterWrite.record(event, start + 100)
+  await afterWrite.flush(start + 1_000, true)
+  expect(written.writes.length).toBe(2)
+  await afterWrite.record(event, start + 5_000)
+  expect(written.writes.length).toBe(2)
+
+  // A forced flush with nothing pending writes nothing, so it does not count.
+  const clean = fakeStore()
+  const afterNothing = await keeperOn(clean)
+  await afterNothing.record(event, start)
+  await afterNothing.flush(start + 4_000, true)
+  expect(clean.writes.length).toBe(1)
+  await afterNothing.record(event, start + 5_000)
+  expect(clean.writes.length).toBe(2)
+})
+
 test('lifetime C10: the end of the session flushes what is pending', async () => {
   const store = fakeStore()
   const keeper = await keeperOn(store)
